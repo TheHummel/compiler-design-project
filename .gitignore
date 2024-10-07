@@ -1,5 +1,7 @@
 *.zip
 *:*Zone.Identifier
 
+_build/
+
 
 commands.txt

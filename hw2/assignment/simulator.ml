@@ -223,6 +223,7 @@ let set_mem_val (mem: mem) (addr: int64) (value: int64) : unit =
     - set the condition flags
 *)
 let step (m:mach) : unit =
+  let rip_modified = ref false in
   let rip = Array.get m.regs (rind Rip) in
   let rip_idx = 
       match map_addr rip with
@@ -277,12 +278,12 @@ let step (m:mach) : unit =
         in
         let new_val = 
           begin match opcode with
-          | Addq -> Int64.add src_val dest_val
-          | Subq -> Int64.sub src_val dest_val
-          | Imulq -> Int64.mul src_val dest_val
-          | Xorq -> Int64.logxor src_val dest_val
-          | Orq -> Int64.logor src_val dest_val
-          | Andq -> Int64.logand src_val dest_val
+          | Addq -> Int64.add dest_val src_val
+          | Subq -> Int64.sub dest_val src_val
+          | Imulq -> Int64.mul dest_val src_val
+          | Xorq -> Int64.logxor dest_val src_val
+          | Orq -> Int64.logor dest_val src_val
+          | Andq -> Int64.logand dest_val src_val
           end
         in
         begin match interp_opnd op2 m with
@@ -472,6 +473,7 @@ let step (m:mach) : unit =
             | MemLoc addr -> get_mem_val m.mem addr
           in
           Array.set m.regs rip_idx new_rip;
+          rip_modified := true;
         | _ -> ()
         end
 
@@ -480,14 +482,21 @@ let step (m:mach) : unit =
         let new_rsp = Int64.add rsp_val 8L in
         Array.set m.regs rsp_idx new_rsp;
         Array.set m.regs rip_idx return_addr;
+        rip_modified := true;
+
+      
 
 
-    end
+    end;
+    if not !rip_modified then
+      m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) ins_size
 
   | InsFrag -> ()
   | Byte char -> ()
   
   end
+
+  
 
 (* Runs the machine until the rip register reaches a designated
    memory address. Returns the contents of %rax when the 

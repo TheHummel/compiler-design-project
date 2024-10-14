@@ -224,7 +224,12 @@ let set_mem_val (mem: mem) (addr: int64) (value: int64) : unit =
 *)
 let step (m:mach) : unit =
   let rip = Array.get m.regs (rind Rip) in
-  let instruction = Array.get m.mem (Int64.to_int rip) in
+  let rip_idx = 
+      match map_addr rip with
+      | Some idx -> idx
+      | None -> raise X86lite_segfault
+  in
+  let instruction = Array.get m.mem rip_idx in
   begin match instruction with
   | InsB0 ins ->
     let (opcode, operands) = ins in

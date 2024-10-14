@@ -449,9 +449,36 @@ let step (m:mach) : unit =
 
         | _ -> ()
         
-      (* | Set cnd *)
       | _ -> ()
+      end
+    | Set cnd ->
+      begin match operands with
+      | [op1] ->
+        let dest_val =
+          begin match interp_opnd op1 m with
+          | Value v -> v
+          | MemLoc addr -> get_mem_val m.mem addr
+          end
+        in
+        let low_byte =
+          if interp_cnd m.flags cnd then
+            1L
+          else
+            0L
+        in
+        let new_val =
+          Int64.logor (Int64.logand dest_val 0xFFFFFFFFFFFFFF00L) low_byte 
+        in
+        begin match interp_opnd op1 m with
+        | Value _ -> 
+          let reg_idx = rind (match op1 with Reg r -> r | _ -> failwith "no register") in
+          Array.set m.regs reg_idx new_val
+        | MemLoc addr ->
+          set_mem_val m.mem addr new_val
         end
+
+      | _ -> ()
+      end
     | Callq | Retq ->
       let rip_idx = rind Rip in
       let rsp_idx = rind Rsp in

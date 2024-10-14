@@ -187,7 +187,11 @@ let interp_opnd (op: operand) (m: mach) : opnd_val =
 
 let get_mem_val (mem: mem) (addr: int64) : int64 =
   if addr < mem_bot || Int64.add addr 7L > mem_top then failwith "out of bounds";
-  let addr_int = Int64.to_int addr in
+  let addr_int = 
+    match map_addr addr with
+    | Some v -> v
+    | None -> failwith "invalid address"
+  in
   let rec read_bytes n acc shift =
     if n = 8 then acc
     else match mem.(addr_int + n) with
@@ -199,7 +203,11 @@ let get_mem_val (mem: mem) (addr: int64) : int64 =
 
 let set_mem_val (mem: mem) (addr: int64) (value: int64) : unit =
   if addr < mem_bot || Int64.add addr 7L > mem_top then failwith "out of bounds";
-  let addr_int = Int64.to_int addr in
+  let addr_int = 
+    match map_addr addr with
+    | Some v -> v
+    | None -> failwith "invalid address"
+  in
   for i = 0 to 7 do
     let byte = Char.chr (Int64.to_int (Int64.shift_right value (i * 8)) land 0xFF) in
     match mem.(addr_int + i) with

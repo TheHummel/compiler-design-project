@@ -566,17 +566,28 @@ let assemble (p:prog) : exec =
   let initial_exec = { entry = 0x400000L; text_pos = 0x400000L; data_pos = 0x400000L; text_seg = []; data_seg = [] } in
   let label_table : (lbl, quad) Hashtbl.t = Hashtbl.create 10 in
   let curr_text_addr = ref initial_exec.text_pos in
-  let curr_data_addr = ref initial_exec.data_pos in
+  let main_found = ref false in
+  let entry_addr = ref initial_exec.entry in
   (* Map instr labels *)
   List.iter (fun elem ->
     let {lbl; global; asm} = elem in
-    match asm with
+    begin match asm with
     | Text instr_list ->
       Hashtbl.add label_table lbl !curr_text_addr;
       curr_text_addr := Int64.add !curr_text_addr (Int64.of_int (8 * List.length instr_list));
+      if lbl = "main" then begin
+        main_found := true;
+        entry_addr := !curr_text_addr;
+      end
     | Data data_list -> ()
+    end
+
   ) p;
-  let updated_exec = { initial_exec with data_pos = !curr_text_addr } in
+  if not !main_found then raise (Undefined_sym "main");
+  let updated_exec = { initial_exec with 
+    entry = !entry_addr;
+    data_pos = !curr_text_addr;
+  } in
   (* Map data labels *)
   let curr_data_addr = ref !curr_text_addr in
   List.iter (fun elem ->
@@ -584,6 +595,7 @@ let assemble (p:prog) : exec =
     match asm with
     | Text instr_list -> ()
     | Data data_list ->
+      if Hashtbl.mem label_table lbl then raise (Redefined_sym lbl);
       Hashtbl.add label_table lbl !curr_data_addr;
       let data_size = List.fold_left (fun acc data_elem ->
         match data_elem with
@@ -601,10 +613,16 @@ let assemble (p:prog) : exec =
         let (opcode, operands) = ins in
         let new_operands = List.map (fun op ->
           begin match op with
-          | Imm (Lbl l) -> Imm (Lit (Hashtbl.find label_table l))
+          | Imm (Lbl l) -> 
+            if not (Hashtbl.mem label_table l) then raise (Undefined_sym l);
+            Imm (Lit (Hashtbl.find label_table l))
           | Imm (Lit l) -> Imm (Lit l)
-          | Ind1 (Lbl l) -> Ind1 (Lit (Hashtbl.find label_table l))
-          | Ind3 (Lbl l, reg) -> Ind3 (Lit (Hashtbl.find label_table l), reg)
+          | Ind1 (Lbl l) -> 
+            if not (Hashtbl.mem label_table l) then raise (Undefined_sym l);
+            Ind1 (Lit (Hashtbl.find label_table l))
+          | Ind3 (Lbl l, reg) -> 
+            if not (Hashtbl.mem label_table l) then raise (Undefined_sym l);
+            Ind3 (Lit (Hashtbl.find label_table l), reg)
           | _ -> op
           end
         ) operands
@@ -617,7 +635,7 @@ let assemble (p:prog) : exec =
         let data_seg = acc.data_seg @ sbytes_of_data d in
         { acc with data_seg }
       ) acc data
-  ) initial_exec p
+  ) updated_exec p
 
 (* Convert an object file into an executable machine state. 
     - allocate the mem array

@@ -133,6 +133,70 @@ let sbytes_of_data : data -> sbyte list = function
   | Quad (Lbl _) -> invalid_arg "sbytes_of_data: tried to serialize a label!"
 
 
+(* Helper functions for setting flags *)
+let flag_set_zero flags result =
+  flags.fz <- (result = 0L)
+
+let flag_set_sign flags result = 
+  flags.fs <- (Int64.shift_right result 63 <> 0L)
+
+let flag_set_shl flags dest_val amt result =
+  if (amt <> 0L) then begin
+    flag_set_zero flags result;
+    flag_set_sign flags result;
+  end;
+  if (amt = 1L) then 
+    flags.fo <- (Int64.logxor (Int64.shift_right dest_val 63) (Int64.shift_right dest_val 62) <> 0L)
+
+let flag_set_shr flags dest_val amt result =
+  if (amt <> 0L) then begin  
+    flags.fs <- (Int64.shift_right result 63 <> 0L);
+    flag_set_zero flags result;
+  end;
+  if (amt = 1L) then 
+    flags.fo <- (Int64.shift_right result 63 <> 0L)
+
+let flag_set_sar flags amt result =  
+  if (amt <> 0L) then begin
+    flag_set_zero flags result;
+    flag_set_sign flags result;
+  end; 
+  if (amt = 1L) then 
+    flags.fo <- false
+
+let flag_set_logic flags result =
+  flags.fo <- false;
+  flag_set_sign flags result;
+  flag_set_zero flags result
+
+let flag_set_neg flags dest_val result =
+  flags.fo <- (dest_val = Int64.min_int);
+  flag_set_sign flags result;
+  flag_set_zero flags result
+
+let flag_set_add flags dest_val src_val result =
+  flags.fo <- (
+    if (dest_val > 0L && src_val > 0L) || (dest_val < 0L && src_val < 0L) then 
+      (Int64.logxor (Int64.shift_right result 63) (Int64.shift_right src_val 63) <> 0L)
+    else false
+  );
+  flag_set_sign flags result;
+  flag_set_zero flags result
+
+let flag_set_sub flags dest_val src_val result =
+  flags.fo <- (
+    if (dest_val > 0L && (Int64.neg src_val) > 0L) || (dest_val < 0L && (Int64.neg src_val) < 0L) then 
+      (Int64.logxor (Int64.shift_right result 63) (Int64.shift_right (Int64.neg src_val) 63) <> 0L) || (src_val = Int64.min_int)
+    else false
+  );
+  flag_set_sign flags result;
+  flag_set_zero flags result
+
+let flag_set_imulq flags dest_val src_val =
+  let result_with_overflow = Int64_overflow.mul dest_val src_val in
+  flags.fo <- result_with_overflow.overflow
+
+
 (* It might be useful to toggle printing of intermediate states of your 
    simulator. Our implementation uses this mutable flag to turn on/off
    printing.  For instance, you might write something like:
@@ -246,9 +310,9 @@ let step (m:mach) : unit =
         in
         let new_val =
           begin match opcode with
-          | Incq -> Int64.succ dest_val
-          | Decq -> Int64.pred dest_val
-          | Negq -> Int64.neg dest_val
+          | Incq -> let result = Int64.succ dest_val in flag_set_add m.flags dest_val 1L result; result
+          | Decq -> let result = Int64.pred dest_val in flag_set_sub m.flags dest_val 1L result; result
+          | Negq -> let result = Int64.neg dest_val in flag_set_neg m.flags dest_val result; result
           | Notq -> Int64.lognot dest_val
           end
         in
@@ -278,12 +342,12 @@ let step (m:mach) : unit =
         in
         let new_val = 
           begin match opcode with
-          | Addq -> Int64.add dest_val src_val
-          | Subq -> Int64.sub dest_val src_val
-          | Imulq -> Int64.mul dest_val src_val
-          | Xorq -> Int64.logxor dest_val src_val
-          | Orq -> Int64.logor dest_val src_val
-          | Andq -> Int64.logand dest_val src_val
+          | Addq -> let result = Int64.add dest_val src_val in flag_set_add m.flags dest_val src_val result; result
+          | Subq -> let result = Int64.sub dest_val src_val in flag_set_sub m.flags dest_val src_val result; result
+          | Imulq -> let result = Int64.mul dest_val src_val in flag_set_imulq m.flags dest_val src_val; result
+          | Xorq -> let result = Int64.logxor dest_val src_val in flag_set_logic m.flags result; result
+          | Orq -> let result = Int64.logor dest_val src_val in flag_set_logic m.flags result; result
+          | Andq -> let result = Int64.logand dest_val src_val in flag_set_logic m.flags result; result
           end
         in
         begin match interp_opnd op2 m with
@@ -328,9 +392,9 @@ let step (m:mach) : unit =
         in
         let new_val = 
           match opcode with
-          | Shlq -> Int64.shift_left dest_val (Int64.to_int amt)
-          | Sarq -> Int64.shift_right dest_val (Int64.to_int amt)
-          | Shrq -> Int64.shift_right_logical dest_val (Int64.to_int amt)
+          | Shlq -> let result = Int64.shift_left dest_val (Int64.to_int amt) in flag_set_shl m.flags dest_val amt result; result
+          | Sarq -> let result = Int64.shift_right dest_val (Int64.to_int amt) in flag_set_sar m.flags amt result; result
+          | Shrq -> let result = Int64.shift_right_logical dest_val (Int64.to_int amt) in flag_set_shr m.flags dest_val amt result; result
         in
         begin match interp_opnd op2 m with
         | Value _ -> 
@@ -406,7 +470,9 @@ let step (m:mach) : unit =
           end
         in
         let rip_index = rind Rip in
-        Array.set m.regs rip_index src_val
+        Array.set m.regs rip_index src_val;
+
+        rip_modified := true;
 
       end
           
@@ -421,9 +487,13 @@ let step (m:mach) : unit =
         in
         let rip_index = rind Rip in
 
-        if interp_cnd m.flags cnd then
-          Array.set m.regs rip_index src_val
-        else () (* Todo *)
+        if interp_cnd m.flags cnd then begin
+          Array.set m.regs rip_index src_val;
+          rip_modified := true;
+        end
+        (* else () *) (* Todo *)
+
+        
       end
 
     | Cmpq ->
@@ -443,8 +513,11 @@ let step (m:mach) : unit =
             | MemLoc addr -> get_mem_val m.mem addr
             end
           in
+          (* let result = Int64_overflow.sub src_val1 src_val2 in
           m.flags.fs <- src_val1 < src_val2;
           m.flags.fz <- src_val1 = src_val2;
+          m.flags.fo <- result.overflow; *)
+          flag_set_sub m.flags src_val1 src_val2 (Int64.sub src_val1 src_val2)
           (* Todo *)
 
         | _ -> ()

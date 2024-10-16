@@ -646,6 +646,7 @@ let assemble (p:prog) : exec =
     let {lbl; global; asm} = elem in
     begin match asm with
     | Text instr_list ->
+      if Hashtbl.mem label_table lbl then raise (Redefined_sym lbl);
       Hashtbl.add label_table lbl !curr_text_addr;
       curr_text_addr := Int64.add !curr_text_addr (Int64.of_int (8 * List.length instr_list));
       if lbl = "main" then begin
@@ -723,5 +724,24 @@ let assemble (p:prog) : exec =
   Hint: The Array.make, Array.blit, and Array.of_list library functions 
   may be of use.
 *)
-let load {entry; text_pos; data_pos; text_seg; data_seg} : mach = 
-failwith "load unimplemented"
+let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
+  let mem = Array.make mem_size (Byte '\x00') in
+  let text_seg_len = List.length text_seg in
+  let data_seg_len = List.length data_seg in
+  let text_seg_arr = Array.of_list text_seg in
+  let data_seg_arr = Array.of_list data_seg in
+  Array.blit text_seg_arr 0 mem 0 text_seg_len;
+  let mem_start = Int64.to_int data_pos - Int64.to_int mem_bot in
+  Array.blit data_seg_arr 0 mem mem_start data_seg_len;
+
+  Array.blit (Array.of_list (sbytes_of_int64 exit_addr)) 0 mem (mem_size - 8) 8;
+  
+  let regs = Array.make nregs 0L in
+  regs.(rind Rip) <- entry;
+  regs.(rind Rsp) <- Int64.sub mem_top 8L;
+
+  { flags = {fo = false; fs = false; fz = false};
+    regs = regs;
+    mem = mem
+  }
+

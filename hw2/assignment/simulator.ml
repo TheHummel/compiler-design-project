@@ -134,11 +134,12 @@ let sbytes_of_data : data -> sbyte list = function
 
 
 (* Helper functions for setting flags *)
-let flag_set_zero flags result =
-  flags.fz <- (result = 0L)
+let flag_set_sign flags result =
+  flags.fs <- (Int64.shift_right result 63) <> 0L
 
-let flag_set_sign flags result = 
-  flags.fs <- (Int64.shift_right result 63 <> 0L)
+let flag_set_zero flags result =
+  flags.fz <- result = 0L
+
 
 let flag_set_shl flags dest_val amt result =
   if (amt <> 0L) then begin
@@ -169,28 +170,26 @@ let flag_set_logic flags result =
   flag_set_sign flags result;
   flag_set_zero flags result
 
+
 let flag_set_neg flags dest_val result =
   flags.fo <- (dest_val = Int64.min_int);
   flag_set_sign flags result;
   flag_set_zero flags result
 
-let flag_set_add flags dest_val src_val result =
-  flags.fo <- (
-    if (dest_val > 0L && src_val > 0L) || (dest_val < 0L && src_val < 0L) then 
-      (Int64.logxor (Int64.shift_right result 63) (Int64.shift_right src_val 63) <> 0L)
-    else false
-  );
+let flag_set_add flags result =
   flag_set_sign flags result;
   flag_set_zero flags result
 
-let flag_set_sub flags dest_val src_val result =
-  flags.fo <- (
-    if (dest_val > 0L && (Int64.neg src_val) > 0L) || (dest_val < 0L && (Int64.neg src_val) < 0L) then 
-      (Int64.logxor (Int64.shift_right result 63) (Int64.shift_right (Int64.neg src_val) 63) <> 0L) || (src_val = Int64.min_int)
-    else false
-  );
+let flag_set_sub flags result =
   flag_set_sign flags result;
   flag_set_zero flags result
+  
+let flag_set_sign flags result =
+  flags.fs <- (Int64.shift_right result 63) <> 0L
+
+let flag_set_zero flags result =
+  flags.fz <- result = 0L
+
 
 let flag_set_imulq flags dest_val src_val =
   let result_with_overflow = Int64_overflow.mul dest_val src_val in
@@ -310,9 +309,31 @@ let step (m:mach) : unit =
         in
         let new_val =
           begin match opcode with
-          | Incq -> let result = Int64.succ dest_val in flag_set_add m.flags dest_val 1L result; result
-          | Decq -> let result = Int64.pred dest_val in flag_set_sub m.flags dest_val 1L result; result
-          | Negq -> let result = Int64.neg dest_val in flag_set_neg m.flags dest_val result; result
+          | Incq ->
+            let result_with_overflow = Int64_overflow.succ dest_val in
+            let result = result_with_overflow.value in
+            m.flags.fo <- result_with_overflow.overflow;
+            flag_set_sign m.flags result;
+            flag_set_zero m.flags result;
+            result
+          
+          | Decq ->
+            let result_with_overflow = Int64_overflow.pred dest_val in
+            let result = result_with_overflow.value in
+            m.flags.fo <- result_with_overflow.overflow;
+            flag_set_sign m.flags result;
+            flag_set_zero m.flags result;
+            result
+        
+          | Negq ->
+            let result_with_overflow = Int64_overflow.neg dest_val in
+            let result = result_with_overflow.value in
+            m.flags.fo <- result_with_overflow.overflow;
+            flag_set_sign m.flags result;
+            flag_set_zero m.flags result;
+            result
+            
+          
           | Notq -> Int64.lognot dest_val
           end
         in
@@ -342,9 +363,31 @@ let step (m:mach) : unit =
         in
         let new_val = 
           begin match opcode with
-          | Addq -> let result = Int64.add dest_val src_val in flag_set_add m.flags dest_val src_val result; result
-          | Subq -> let result = Int64.sub dest_val src_val in flag_set_sub m.flags dest_val src_val result; result
-          | Imulq -> let result = Int64.mul dest_val src_val in flag_set_imulq m.flags dest_val src_val; result
+          | Addq ->
+            let result_with_overflow = Int64_overflow.add dest_val src_val in
+            let result = result_with_overflow.value in
+            m.flags.fo <- result_with_overflow.overflow;
+            flag_set_sign m.flags result;
+            flag_set_zero m.flags result;
+            result
+          
+          | Subq ->
+            let result_with_overflow = Int64_overflow.sub dest_val src_val in
+            let result = result_with_overflow.value in
+            m.flags.fo <- result_with_overflow.overflow;
+            flag_set_sign m.flags result;
+            flag_set_zero m.flags result;
+            result
+          
+          | Imulq ->
+            let result_with_overflow = Int64_overflow.mul dest_val src_val in
+            let result = result_with_overflow.value in
+            m.flags.fo <- result_with_overflow.overflow;
+            flag_set_sign m.flags result;
+            flag_set_zero m.flags result;
+            result
+            
+          
           | Xorq -> let result = Int64.logxor dest_val src_val in flag_set_logic m.flags result; result
           | Orq -> let result = Int64.logor dest_val src_val in flag_set_logic m.flags result; result
           | Andq -> let result = Int64.logand dest_val src_val in flag_set_logic m.flags result; result
@@ -499,28 +542,26 @@ let step (m:mach) : unit =
     | Cmpq ->
       begin match opcode with
       | Cmpq ->
-        match operands with
+        begin match operands with
         | [op1; op2] ->
-          let src_val1 =
-            begin match interp_opnd op1 m with
+          let src_val =
+            match interp_opnd op1 m with
             | Value v -> v
             | MemLoc addr -> get_mem_val m.mem addr
-            end
           in
-          let src_val2 =
-            begin match interp_opnd op2 m with
+          let dest_val =
+            match interp_opnd op2 m with
             | Value v -> v
             | MemLoc addr -> get_mem_val m.mem addr
-            end
           in
-          (* let result = Int64_overflow.sub src_val1 src_val2 in
-          m.flags.fs <- src_val1 < src_val2;
-          m.flags.fz <- src_val1 = src_val2;
-          m.flags.fo <- result.overflow; *)
-          flag_set_sub m.flags src_val1 src_val2 (Int64.sub src_val1 src_val2)
-          (* Todo *)
-
+          let result_with_overflow = Int64_overflow.sub dest_val src_val in
+          let result = result_with_overflow.value in
+          m.flags.fo <- result_with_overflow.overflow;
+          flag_set_sign m.flags result;
+          flag_set_zero m.flags result
         | _ -> ()
+        end
+      
         
       | _ -> ()
       end
@@ -647,12 +688,12 @@ let assemble (p:prog) : exec =
     begin match asm with
     | Text instr_list ->
       if Hashtbl.mem label_table lbl then raise (Redefined_sym lbl);
-      Hashtbl.add label_table lbl !curr_text_addr;
-      curr_text_addr := Int64.add !curr_text_addr (Int64.of_int (8 * List.length instr_list));
       if lbl = "main" then begin
         main_found := true;
         entry_addr := !curr_text_addr;
-      end
+      end;
+      Hashtbl.add label_table lbl !curr_text_addr;
+      curr_text_addr := Int64.add !curr_text_addr (Int64.of_int (8 * List.length instr_list));
     | Data data_list -> ()
     end
 

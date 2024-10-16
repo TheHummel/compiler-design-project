@@ -563,7 +563,61 @@ exception Redefined_sym of lbl
   HINT: List.fold_left and List.fold_right are your friends.
  *)
 let assemble (p:prog) : exec =
-failwith "assemble unimplemented"
+  let initial_exec = { entry = 0x400000L; text_pos = 0x400000L; data_pos = 0x400000L; text_seg = []; data_seg = [] } in
+  let label_table : (lbl, quad) Hashtbl.t = Hashtbl.create 10 in
+  let curr_text_addr = ref initial_exec.text_pos in
+  let curr_data_addr = ref initial_exec.data_pos in
+  (* Map instr labels *)
+  List.iter (fun elem ->
+    let {lbl; global; asm} = elem in
+    match asm with
+    | Text instr_list ->
+      Hashtbl.add label_table lbl !curr_text_addr;
+      curr_text_addr := Int64.add !curr_text_addr (Int64.of_int (8 * List.length instr_list));
+    | Data data_list -> ()
+  ) p;
+  let updated_exec = { initial_exec with data_pos = !curr_text_addr } in
+  (* Map data labels *)
+  let curr_data_addr = ref !curr_text_addr in
+  List.iter (fun elem ->
+    let {lbl; global; asm} = elem in
+    match asm with
+    | Text instr_list -> ()
+    | Data data_list ->
+      Hashtbl.add label_table lbl !curr_data_addr;
+      let data_size = List.fold_left (fun acc data_elem ->
+        match data_elem with
+        | Quad _ -> acc + 8
+        | Asciz s -> acc + String.length s + 1
+      ) 0 data_list in
+      curr_data_addr := Int64.add !curr_data_addr (Int64.of_int data_size)
+  ) p;
+  (* populate text and data segment *)
+  List.fold_left (fun acc elem ->
+    let {lbl; global; asm} = elem in
+    match asm with
+    | Text instrs -> 
+      List.fold_left (fun acc ins ->
+        let (opcode, operands) = ins in
+        let new_operands = List.map (fun op ->
+          begin match op with
+          | Imm (Lbl l) -> Imm (Lit (Hashtbl.find label_table l))
+          | Imm (Lit l) -> Imm (Lit l)
+          | Ind1 (Lbl l) -> Ind1 (Lit (Hashtbl.find label_table l))
+          | Ind3 (Lbl l, reg) -> Ind3 (Lit (Hashtbl.find label_table l), reg)
+          | _ -> op
+          end
+        ) operands
+        in
+        let text_seg = acc.text_seg @ sbytes_of_ins (opcode, new_operands) in
+          { acc with text_seg } 
+      ) acc instrs
+    | Data data ->
+      List.fold_left (fun acc d ->
+        let data_seg = acc.data_seg @ sbytes_of_data d in
+        { acc with data_seg }
+      ) acc data
+  ) initial_exec p
 
 (* Convert an object file into an executable machine state. 
     - allocate the mem array

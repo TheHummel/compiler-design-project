@@ -155,7 +155,7 @@ let flag_set_shr flags dest_val amt result =
     flag_set_zero flags result;
   end;
   if (amt = 1L) then 
-    flags.fo <- (Int64.shift_right result 63 <> 0L)
+    flags.fo <- (Int64.shift_right dest_val 63 <> 0L)
 
 let flag_set_sar flags amt result =  
   if (amt <> 0L) then begin
@@ -278,6 +278,39 @@ let set_mem_val (mem: mem) (addr: int64) (value: int64) : unit =
     | _ -> raise X86lite_segfault
   done
 
+
+let read_from_operand (m:mach) (operand:operand) : int64 =
+  let read_mem addr =
+    match map_addr addr with
+    | Some index ->
+      let bytes = Array.sub m.mem index 8 in
+      int64_of_sbytes (Array.to_list bytes)
+    | None -> raise X86lite_segfault
+  in
+  match operand with
+  | Imm (Lit value) -> value
+  | Reg reg -> m.regs.(rind reg)
+  | Ind1 (Lit addr) -> read_mem addr
+  | Ind2 reg -> read_mem m.regs.(rind reg)
+  | Ind3 (Lit disp, reg) -> read_mem (Int64.add disp m.regs.(rind reg))
+  | _ -> failwith "Invalid operand"
+
+let write_to_operand (m:mach) (operand:operand) (value:int64) : unit =
+  let write_mem addr =
+    match map_addr addr with
+    | Some index ->
+      let bytes = Array.of_list (sbytes_of_int64 value) in
+      Array.blit bytes 0 m.mem index 8
+    | None -> raise X86lite_segfault
+  in
+  match operand with
+  | Reg reg -> m.regs.(rind reg) <- value
+  | Ind1 (Lit addr) -> write_mem addr
+  | Ind2 reg -> write_mem m.regs.(rind reg)
+  | Ind3 (Lit disp, reg) -> write_mem (Int64.add disp m.regs.(rind reg))
+  | _ -> failwith "Invalid operand"
+
+
 (* Simulates one step of the machine:
     - fetch the instruction at %rip
     - compute the source and/or destination information from the operands
@@ -286,356 +319,225 @@ let set_mem_val (mem: mem) (addr: int64) (value: int64) : unit =
     - set the condition flags
 *)
 let step (m:mach) : unit =
-  let rip_modified = ref false in
-  let rip = Array.get m.regs (rind Rip) in
-  let rip_idx = 
-      match map_addr rip with
-      | Some idx -> idx
-      | None -> raise X86lite_segfault
+  let rip = m.regs.(rind Rip) in
+  let rip_index =
+    match map_addr rip with
+    | Some idx -> idx
+    | None -> raise X86lite_segfault
   in
-  let instruction = Array.get m.mem rip_idx in
-  begin match instruction with
-  | InsB0 ins ->
-    let (opcode, operands) = ins in
-    begin match opcode with
-    | Incq | Decq | Negq | Notq -> 
-      begin match operands with
-      | op1::[] -> 
-        let dest_val =
-          begin match interp_opnd op1 m with
-          | Value v -> v
-          | MemLoc addr -> get_mem_val m.mem addr
-          end
-        in
-        let new_val =
-          begin match opcode with
-          | Incq ->
-            let result_with_overflow = Int64_overflow.succ dest_val in
-            let result = result_with_overflow.value in
-            m.flags.fo <- result_with_overflow.overflow;
-            flag_set_sign m.flags result;
-            flag_set_zero m.flags result;
-            result
-          
-          | Decq ->
-            let result_with_overflow = Int64_overflow.pred dest_val in
-            let result = result_with_overflow.value in
-            m.flags.fo <- result_with_overflow.overflow;
-            flag_set_sign m.flags result;
-            flag_set_zero m.flags result;
-            result
-        
-          | Negq ->
-            let result_with_overflow = Int64_overflow.neg dest_val in
-            let result = result_with_overflow.value in
-            m.flags.fo <- result_with_overflow.overflow;
-            flag_set_sign m.flags result;
-            flag_set_zero m.flags result;
-            result
-            
-          
-          | Notq -> Int64.lognot dest_val
-          end
-        in
-        begin match interp_opnd op1 m with
-        | Value _ -> 
-          let reg_idx = rind (match op1 with Reg r -> r | _ -> failwith "no register") in
-          Array.set m.regs reg_idx new_val
-        | MemLoc addr ->
-          set_mem_val m.mem addr new_val
-        end
-      | _ -> failwith ""
-      end
-    | Addq | Subq | Imulq | Xorq | Orq | Andq -> 
-      begin match operands with
-      | [op1; op2] ->
-        let src_val =
-          begin match interp_opnd op1 m with
-          | Value v -> v
-          | MemLoc addr -> get_mem_val m.mem addr
-          end
-        in
-        let dest_val =
-          begin match interp_opnd op2 m with
-          | Value v -> v
-          | MemLoc addr -> get_mem_val m.mem addr
-          end
-        in
-        let new_val = 
-          begin match opcode with
-          | Addq ->
-            let result_with_overflow = Int64_overflow.add dest_val src_val in
-            let result = result_with_overflow.value in
-            m.flags.fo <- result_with_overflow.overflow;
-            flag_set_sign m.flags result;
-            flag_set_zero m.flags result;
-            result
-          
-          | Subq ->
-            let result_with_overflow = Int64_overflow.sub dest_val src_val in
-            let result = result_with_overflow.value in
-            m.flags.fo <- result_with_overflow.overflow;
-            flag_set_sign m.flags result;
-            flag_set_zero m.flags result;
-            result
-          
-          | Imulq ->
-            let result_with_overflow = Int64_overflow.mul dest_val src_val in
-            let result = result_with_overflow.value in
-            m.flags.fo <- result_with_overflow.overflow;
-            flag_set_sign m.flags result;
-            flag_set_zero m.flags result;
-            result
-            
-          
-          | Xorq -> let result = Int64.logxor dest_val src_val in flag_set_logic m.flags result; result
-          | Orq -> let result = Int64.logor dest_val src_val in flag_set_logic m.flags result; result
-          | Andq -> let result = Int64.logand dest_val src_val in flag_set_logic m.flags result; result
-          end
-        in
-        begin match interp_opnd op2 m with
-        | Value _ -> 
-          let reg_idx = rind (match op2 with Reg r -> r | _ -> failwith "no register") in
-          Array.set m.regs reg_idx new_val
-        | MemLoc addr ->
-          set_mem_val m.mem addr new_val
-        end
-      | _ -> ()
-      end
-    | Leaq ->
-      begin match operands with
-      | [op1; op2] -> 
-        let addr =
-          match interp_opnd op1 m with
-          | MemLoc addr -> addr
-          | Value _ -> failwith "Leaq source should be an address"
-        in
-        begin match op2 with
-        | Reg reg ->
-          let reg_idx = rind reg in
-          Array.set m.regs reg_idx addr
-        | _ -> failwith "Leaq dest should be a register"
-        end
-      | _ -> ()
-      end
-    | Shlq | Sarq | Shrq -> 
-      begin match operands with
-      | [op1; op2] ->
-        let amt =
-          begin match interp_opnd op1 m with
-          | Value v -> v
-          | MemLoc addr -> get_mem_val m.mem addr
-          end
-        in
-        let dest_val =
-          begin match interp_opnd op2 m with
-          | Value v -> v
-          | MemLoc addr -> get_mem_val m.mem addr
-          end
-        in
-        let new_val = 
-          match opcode with
-          | Shlq -> let result = Int64.shift_left dest_val (Int64.to_int amt) in flag_set_shl m.flags dest_val amt result; result
-          | Sarq -> let result = Int64.shift_right dest_val (Int64.to_int amt) in flag_set_sar m.flags amt result; result
-          | Shrq -> let result = Int64.shift_right_logical dest_val (Int64.to_int amt) in flag_set_shr m.flags dest_val amt result; result
-        in
-        begin match interp_opnd op2 m with
-        | Value _ -> 
-          let reg_idx = rind (match op2 with Reg r -> r | _ -> failwith "no register") in
-          Array.set m.regs reg_idx new_val
-        | MemLoc addr ->
-          set_mem_val m.mem addr new_val
-        end
-      | _ -> ()
-      end
-    | Movq | Pushq | Popq ->
+  let instruction =
+    match m.mem.(rip_index) with
+    | InsB0 ins -> ins
+    | _ -> raise X86lite_segfault
+  in
+  let (opcode, operands) = instruction in
+  let rip_modified = ref false in
+
+  let update_flags_arith result overflow =
+    m.flags.fo <- overflow;
+    m.flags.fs <- Int64.shift_right result 63 <> 0L;
+    m.flags.fz <- result = 0L
+  in
+
+  let update_flags_logic result =
+    m.flags.fo <- false;
+    m.flags.fs <- Int64.shift_right result 63 <> 0L;
+    m.flags.fz <- result = 0L
+  in
+
+  begin match opcode with
+  | Incq | Decq | Negq | Notq ->
+    begin match operands with
+    | [dst] ->
+      let dest_val = read_from_operand m dst in
       begin match opcode with
-      | Movq ->
-        begin match operands with
-        | [op1; op2] ->
-          let src_val =
-            begin match interp_opnd op1 m with
-            | Value v -> v
-            | MemLoc addr -> get_mem_val m.mem addr
-            end
-          in
-          begin match interp_opnd op2 m with
-          | Value _ -> 
-            let reg_idx = rind (match op2 with Reg r -> r | _ -> failwith "no register") in
-            Array.set m.regs reg_idx src_val
-          | MemLoc addr ->
-            set_mem_val m.mem addr src_val
-          end
-        | _ -> ()
-        end
-      | Pushq ->
-        begin match operands with
-        | [op1] ->
-          let src_val =
-            begin match interp_opnd op1 m with
-            | Value v -> v
-            | MemLoc addr -> get_mem_val m.mem addr
-            end
-          in
-          let rsp_index = rind Rsp in
-          let rsp_val = Array.get m.regs rsp_index in
-          let new_rsp = Int64.sub rsp_val 8L in
-          Array.set m.regs rsp_index new_rsp;
+      | Incq ->
+  
+        let result_with_overflow = Int64_overflow.succ dest_val in
+        update_flags_arith result_with_overflow.value result_with_overflow.overflow;
+        write_to_operand m dst result_with_overflow.value
+      | Decq ->
+        let result_with_overflow = Int64_overflow.pred dest_val in
+        update_flags_arith result_with_overflow.value result_with_overflow.overflow;
+        write_to_operand m dst result_with_overflow.value
 
-          set_mem_val m.mem new_rsp src_val
-        | _ -> ()
-        end
-      | Popq ->
-        begin match operands with
-        | [op1] ->
-          let rsp_index = rind Rsp in
-          let rsp_val = Array.get m.regs rsp_index in
-          let mem_rsp = get_mem_val m.mem rsp_val in
-
-          let new_rsp = Int64.add rsp_val 8L in
-          Array.set m.regs rsp_index new_rsp;
-
-          begin match op1 with
-          | Reg reg ->
-            let reg_idx = rind reg in
-            Array.set m.regs reg_idx mem_rsp
-          | _ -> failwith "dest must be a register"
-          end
-        end
+      | Negq ->
+        let result_with_overflow = Int64_overflow.neg dest_val in
+        update_flags_arith result_with_overflow.value result_with_overflow.overflow;
+        write_to_operand m dst result_with_overflow.value
+      | Notq ->
+        let result = Int64.lognot dest_val in
+        (* update_flags_logic result; *)
+        write_to_operand m dst result
       end
+    | _ -> failwith "Invalid operands"
+    end
+  | Addq | Subq | Imulq | Xorq | Orq | Andq ->
+    begin match operands with
+    | [src; dst] ->
+      let src_val = read_from_operand m src in
+      let dest_val = read_from_operand m dst in
+      begin match opcode with
+      | Addq ->
+        
+        let result_with_overflow = Int64_overflow.add dest_val src_val in
+        update_flags_arith result_with_overflow.value result_with_overflow.overflow;
+        write_to_operand m dst result_with_overflow.value
+      | Subq ->
+        let result_with_overflow = Int64_overflow.sub dest_val src_val in
+        update_flags_arith result_with_overflow.value result_with_overflow.overflow;
+        write_to_operand m dst result_with_overflow.value
+      | Imulq ->
+        let result = Int64.mul dest_val src_val in
+        flag_set_imulq m.flags dest_val src_val;
+        write_to_operand m dst result
+      | Andq ->
+        let result = Int64.logand dest_val src_val in
+        flag_set_logic m.flags result;
+        write_to_operand m dst result
+      | Xorq ->
+        let result = Int64.logxor dest_val src_val in
+        flag_set_logic m.flags result;
+        write_to_operand m dst result
+      | Orq ->
+        let result = Int64.logor dest_val src_val in
+        flag_set_logic m.flags result;
+        write_to_operand m dst result
+      end
+    | _ -> failwith "Invalid operands"
+    end
+  | Shlq | Sarq | Shrq ->
+    begin match operands with
+    | [amt; dst] ->
+      let amt_val = read_from_operand m amt in
+      let dest_val = read_from_operand m dst in
+      begin match opcode with
+      | Shlq ->
+        let result = Int64.shift_left dest_val (Int64.to_int amt_val) in
+        flag_set_shl m.flags dest_val amt_val result;
+        write_to_operand m dst result
+      | Sarq ->
+        let result = Int64.shift_right dest_val (Int64.to_int amt_val) in
+        flag_set_sar m.flags amt_val result;
+        write_to_operand m dst result
+      | Shrq ->
+        let result = Int64.shift_right_logical dest_val (Int64.to_int amt_val) in
+        flag_set_shr m.flags dest_val amt_val result;
+        write_to_operand m dst result
+      end
+    | _ -> failwith "Invalid operands"
+    end
+  | Leaq ->
+    begin match operands with
+    | [src; dst] ->
+      let src_val = 
+        match src with
+        | Ind1 (Lit addr) -> addr
+        | Ind2 reg -> m.regs.(rind reg)
+        | Ind3 (Lit base, offset) -> Int64.add base m.regs.(rind offset)
+        | _ -> failwith "Invalid operand"
+      in
+      (* let src_val = read_from_operand m src in *)
+      write_to_operand m dst src_val
+    | _ -> failwith "Invalid operands"
+    end
+  | Movq | Pushq | Popq ->
+    begin match opcode with
+    | Movq ->
+      begin match operands with
+      | [src; dst] ->
+          let src_val = read_from_operand m src in
+          write_to_operand m dst src_val
+      | _ -> failwith "Invalid operands"
+      end
+    | Pushq ->
+      begin match operands with
+      | [src] ->
+          let src_val = read_from_operand m src in
+          let rsp = m.regs.(rind Rsp) in
+          m.regs.(rind Rsp) <- Int64.sub rsp 8L;
+          write_to_operand m (Ind2 Rsp) src_val
+      | _ -> failwith "Invalid operands"
+      end
+    | Popq ->
+      begin match operands with
+      | [op1] ->
+          let rsp = m.regs.(rind Rsp) in
+          let op1_val = read_from_operand m (Ind2 Rsp) in
+          m.regs.(rind Rsp) <- Int64.add rsp 8L;
+          write_to_operand m op1 op1_val
+      | _ -> failwith "Invalid operands"
+      end
+    end
+  | Jmp | J _ ->
+    begin match opcode with
     | Jmp ->
       begin match operands with
       | [op1] ->
-        let src_val =
-          begin match interp_opnd op1 m with
-          | Value v -> v
-          | MemLoc addr -> get_mem_val m.mem addr
-          end
-        in
-        let rip_index = rind Rip in
-        Array.set m.regs rip_index src_val;
-
-        rip_modified := true;
-
+          let target = read_from_operand m op1 in
+          m.regs.(rind Rip) <- target;
+          rip_modified := true
+      | _ -> failwith "Invalid operands"
       end
-          
     | J cnd ->
       begin match operands with
       | [op1] ->
-        let src_val =
-          begin match interp_opnd op1 m with
-          | Value v -> v
-          | MemLoc addr -> get_mem_val m.mem addr
-          end
-        in
-        let rip_index = rind Rip in
-
-        if interp_cnd m.flags cnd then begin
-          Array.set m.regs rip_index src_val;
-          rip_modified := true;
-        end
-        (* else () *) (* Todo *)
-
-        
+          if interp_cnd m.flags cnd then
+            let target = read_from_operand m op1 in
+            m.regs.(rind Rip) <- target;
+            rip_modified := true
+      | _ -> failwith "Invalid operands"
       end
-
+    end
+  | Cmpq  | Set _ ->
+    begin match opcode with
     | Cmpq ->
-      begin match opcode with
-      | Cmpq ->
-        begin match operands with
-        | [op1; op2] ->
-          let src_val =
-            match interp_opnd op1 m with
-            | Value v -> v
-            | MemLoc addr -> get_mem_val m.mem addr
-          in
-          let dest_val =
-            match interp_opnd op2 m with
-            | Value v -> v
-            | MemLoc addr -> get_mem_val m.mem addr
-          in
-          let result_with_overflow = Int64_overflow.sub dest_val src_val in
-          let result = result_with_overflow.value in
-          m.flags.fo <- result_with_overflow.overflow;
-          flag_set_sign m.flags result;
-          flag_set_zero m.flags result
-        | _ -> ()
-        end
-      
-        
-      | _ -> ()
+      begin match operands with
+      | [op1; op2] ->
+          let op1_val = read_from_operand m op1 in
+          let op2_val = read_from_operand m op2 in
+          let result_with_overflow = Int64_overflow.sub op2_val op1_val in
+          update_flags_arith result_with_overflow.value result_with_overflow.overflow;
+      | _ -> failwith "Invalid operands"
       end
     | Set cnd ->
       begin match operands with
-      | [op1] ->
-        let dest_val =
-          begin match interp_opnd op1 m with
-          | Value v -> v
-          | MemLoc addr -> get_mem_val m.mem addr
-          end
-        in
-        let low_byte =
-          if interp_cnd m.flags cnd then
-            1L
-          else
-            0L
-        in
-        let new_val =
-          Int64.logor (Int64.logand dest_val 0xFFFFFFFFFFFFFF00L) low_byte 
-        in
-        begin match interp_opnd op1 m with
-        | Value _ -> 
-          let reg_idx = rind (match op1 with Reg r -> r | _ -> failwith "no register") in
-          Array.set m.regs reg_idx new_val
-        | MemLoc addr ->
-          set_mem_val m.mem addr new_val
-        end
-
-      | _ -> ()
+      | [src] ->
+          let src_val = read_from_operand m src in
+          let cnd_result = interp_cnd m.flags cnd in
+          let lower_byte = if cnd_result then 1L else 0L in
+          let mask = Int64.logand src_val 0xFFFFFFFFFFFFFF00L in
+          let result = Int64.logor mask lower_byte in
+          write_to_operand m src result
+      | _ -> failwith "Invalid operands"
       end
-    | Callq | Retq ->
-      let rip_idx = rind Rip in
-      let rsp_idx = rind Rsp in
-      let rip_val = Array.get m.regs rip_idx in
-      let rsp_val = Array.get m.regs rsp_idx in
-
-      match opcode with
-      | Callq ->
+    end
+  | Callq | Retq ->
+    begin match opcode with
+    | Callq ->
         begin match operands with
-        | [op1] -> 
-          let new_rsp = Int64.sub rsp_val 8L in
-          Array.set m.regs rsp_idx new_rsp;
-    
-          set_mem_val m.mem new_rsp rip_val;
-    
-          let new_rip =
-            match interp_opnd op1 m with
-            | Value addr -> addr
-            | MemLoc addr -> get_mem_val m.mem addr
-          in
-          Array.set m.regs rip_idx new_rip;
-          rip_modified := true;
-        | _ -> ()
+        | [op1] ->
+            let target = read_from_operand m op1 in
+            let rsp = m.regs.(rind Rsp) in
+            m.regs.(rind Rsp) <- Int64.sub rsp 8L;
+            write_to_operand m (Ind2 Rsp) (Int64.add rip 8L);
+            m.regs.(rind Rip) <- target;
+            rip_modified := true
+        | _ -> failwith "Invalid operands"
         end
+    | Retq ->
+        let rsp = m.regs.(rind Rsp) in
+        let return_addr = read_from_operand m (Ind2 Rsp) in
+        m.regs.(rind Rsp) <- Int64.add rsp 8L;
+        m.regs.(rind Rip) <- return_addr;
+        rip_modified := true
+    end
+  | _ -> failwith "opcode not supported"
+end;
 
-      | Retq ->
-        let return_addr = get_mem_val m.mem rsp_val in
-        let new_rsp = Int64.add rsp_val 8L in
-        Array.set m.regs rsp_idx new_rsp;
-        Array.set m.regs rip_idx return_addr;
-        rip_modified := true;
+if not !rip_modified then
+  m.regs.(rind Rip) <- Int64.add rip ins_size
 
-      
-
-
-    end;
-    if not !rip_modified then
-      m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) ins_size
-
-  | InsFrag -> ()
-  | Byte char -> ()
-  
-  end
 
   
 
@@ -767,13 +669,13 @@ let assemble (p:prog) : exec =
 *)
 let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
   let mem = Array.make mem_size (Byte '\x00') in
-  let text_seg_len = List.length text_seg in
-  let data_seg_len = List.length data_seg in
-  let text_seg_arr = Array.of_list text_seg in
-  let data_seg_arr = Array.of_list data_seg in
-  Array.blit text_seg_arr 0 mem 0 text_seg_len;
+  let text_length = List.length text_seg in
+  let data_length = List.length data_seg in
+  let text_array = Array.of_list text_seg in
+  let data_array = Array.of_list data_seg in
+  Array.blit text_array 0 mem 0 text_length;
   let mem_start = Int64.to_int data_pos - Int64.to_int mem_bot in
-  Array.blit data_seg_arr 0 mem mem_start data_seg_len;
+  Array.blit data_array 0 mem mem_start data_length;
 
   Array.blit (Array.of_list (sbytes_of_int64 exit_addr)) 0 mem (mem_size - 8) 8;
   

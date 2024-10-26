@@ -249,8 +249,23 @@ let compile_lbl_block fn lbl ctxt blk : elem =
 
    [ NOTE: the first six arguments are numbered 0 .. 5 ]
 *)
+
+(* Mapping the first six arguments to %rdi, %rsi, %rdx, %rcx, %r8, %r9.
+Placing additional arguments in stack slots relative to %rbp. *)
+(*  1 .. 6:  rdi, rsi, rdx, rcx, r8, r9– 7+: on the stack (in right-to-left order)– Thus, for n > 6,  the nth argument is at  ((n-7)+2)*8 + rb *)
+(* which formular? this or this one: -8 * (n - 5) *)
 let arg_loc (n : int) : operand =
-failwith "arg_loc not implemented"
+  if n<6 then 
+    match n with 
+    | 0 -> Reg Rdi
+    | 1 -> Reg Rsi
+    | 2 -> Reg Rdx
+    | 3 -> Reg Rcx
+    | 4 -> Reg R08
+    | 5 -> Reg R09
+    | _ -> failwith "n should not be neg"
+  else 
+    Ind3 (Lit (Int64.of_int (((n-7)+2)*(-8))), Rbp) 
 
 
 (* We suggest that you create a helper function that computes the
@@ -263,7 +278,11 @@ failwith "arg_loc not implemented"
 
 *)
 let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
-failwith "stack_layout not implemented"
+  (* mapi i does this: (int -> 'a -> 'b) -> 'a list -> 'b list *)
+  let arg_layout = List.mapi (fun i args_uid -> (args_uid, arg_loc i)) args in 
+   (*TODO*)
+   arg_layout
+
 
 (* The code for the entry-point of a function must do several things:
 
@@ -281,8 +300,28 @@ failwith "stack_layout not implemented"
    - the function entry code should allocate the stack storage needed
      to hold all of the local stack slots.
 *)
+
+(* prog is a list of: type elem = { lbl: lbl; global: bool; asm: asm } *)
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
-failwith "compile_fdecl unimplemented"
+  let stack_allocation_amout = Lit (Int64.of_int (if List.length f_param > 6 then 8 * (List.length f_param - 6) else 0))
+  let begin_code = [
+    (Pushq, [Reg Rbp]);
+    (Movq, [Reg Rsp; Reg Rbp]);
+    (* make space on stack for all the arguments if there are more then 6 and call stack layout*)
+    (Subq, [stack_allocation_amout; Reg Rsp])
+  ] in
+  (* FIX IT  *)
+  let move_args = List.mapi (fun i args_uid ->
+    if n>6 then 
+      (Movq, [arg_loc i, ]) 
+    else (Movq, )) args
+  let end_code = [
+    (Mov, [Reg Rbp; Reg Rsp]); (* Restore Rsp from Rbp *)
+    (Pop, [Reg Rbp]);          (* Pop the old base pointer *)
+    (Ret, []);                 (* Return from the function *)
+  ] in
+  (*TODO:  Compile the function with f_cfg I think*)
+  [{ lbl = name; global = true; asm = Text prologue }]
 
 
 

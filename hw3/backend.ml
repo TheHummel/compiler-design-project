@@ -220,15 +220,23 @@ let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
 
    [fn] - the name of the function containing this terminator
 *)
+
+(* terminator:
+  | RET t=ty o=operand
+    { Ret (t, Some o) }
+  | RET t=ty
+    { Ret (t, None) }
+  | BR LABEL l=UID
+    { Br l }
+  | BR I1 o=operand COMMA LABEL l1=UID COMMA LABEL l2=UID
+    { Cbr (o,l1,l2) } *)
+
 let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
 (* implementation für task 2. NOT THE FULL ONE *)
+  let end_shit = [(Movq, [Reg Rbp; Reg Rsp]); (Popq, [Reg Rbp]); (Retq, [])] in 
   match t with
-    | Ll.Ret _ -> [
-      (Movq, [Reg Rbp; Reg Rsp]); 
-      (Popq, [Reg Rbp]);          
-      (Retq, [])                  
-      ]
-    | Ll.Br lbl -> failwith " not implemented"
+    | Ret (ty, Some o) -> [compile_operand ctxt (Reg Rax) o] @ end_shit
+    | Ret (ty, None) -> end_shit
     | _ ->failwith " not implemented"
 
 
@@ -312,14 +320,15 @@ let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
 (* prog is a list of: type elem = { lbl: lbl; global: bool; asm: asm } *)
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
   let stack_allocation_amout = Imm ( Lit(Int64.of_int (if List.length f_param > 6 then 8 * (List.length f_param - 6+2) else 0))) in 
+  let layout = stack_layout f_param f_cfg in 
+  let ((insn, term), blocks) = f_cfg in
   let begin_code = [
     (Pushq, [Reg Rbp]);
     (Movq, [Reg Rsp; Reg Rbp]);
     (* make space on stack for all the arguments if there are more then 6 and call stack layout*)
     (Subq, [stack_allocation_amout; Reg Rsp])
   ] in
-  (* MOVES   ARGUMENTS
-   *)
+  (* MOVES   ARGUMENTS *)
   let arg_moves =
     List.mapi (fun i arg_uid ->
       let src = arg_loc i in
@@ -327,6 +336,8 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg
       (Movq, [src; dest])
     ) f_param
   in
+  let end_code = compile_terminator name { tdecls = tdecls; layout = layout} entry_block in
+  let all_code = begin_code @ end_code in
 
   [{ lbl = name; global = true; asm = Text begin_code }]
 

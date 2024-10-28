@@ -221,7 +221,15 @@ let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
    [fn] - the name of the function containing this terminator
 *)
 let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
-  failwith "compile_terminator not implemented"
+(* implementation für task 2. NOT THE FULL ONE *)
+  match t with
+    | Ll.Ret _ -> [
+      (Movq, [Reg Rbp; Reg Rsp]); 
+      (Popq, [Reg Rbp]);          
+      (Retq, [])                  
+      ]
+    | Ll.Br lbl -> failwith " not implemented"
+    | _ ->failwith " not implemented"
 
 
 (* compiling blocks --------------------------------------------------------- *)
@@ -253,7 +261,7 @@ let compile_lbl_block fn lbl ctxt blk : elem =
 (* Mapping the first six arguments to %rdi, %rsi, %rdx, %rcx, %r8, %r9.
 Placing additional arguments in stack slots relative to %rbp. *)
 (*  1 .. 6:  rdi, rsi, rdx, rcx, r8, r9– 7+: on the stack (in right-to-left order)– Thus, for n > 6,  the nth argument is at  ((n-7)+2)*8 + rb *)
-(* which formular? this or this one: -8 * (n - 5) *)
+(* WHICH FORMULAR? this or this one: -8 * (n - 5) *)
 let arg_loc (n : int) : operand =
   if n<6 then 
     match n with 
@@ -265,7 +273,7 @@ let arg_loc (n : int) : operand =
     | 5 -> Reg R09
     | _ -> failwith "n should not be neg"
   else 
-    Ind3 (Lit (Int64.of_int (((n-7)+2)*(-8))), Rbp) 
+    Ind3 (Lit (Int64.of_int (((n-6)+2)*(8))), Rbp) 
 
 
 (* We suggest that you create a helper function that computes the
@@ -303,24 +311,24 @@ let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
 
 (* prog is a list of: type elem = { lbl: lbl; global: bool; asm: asm } *)
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
-  let stack_allocation_amout = Imm ( Lit(Int64.of_int (if List.length f_param > 6 then 8 * (List.length f_param - 6) else 0))) in 
+  let stack_allocation_amout = Imm ( Lit(Int64.of_int (if List.length f_param > 6 then 8 * (List.length f_param - 6+2) else 0))) in 
   let begin_code = [
     (Pushq, [Reg Rbp]);
     (Movq, [Reg Rsp; Reg Rbp]);
     (* make space on stack for all the arguments if there are more then 6 and call stack layout*)
     (Subq, [stack_allocation_amout; Reg Rsp])
   ] in
-  (* FIX IT  *)
+  (* MOVES   ARGUMENTS
+   *)
+  let arg_moves =
+    List.mapi (fun i arg_uid ->
+      let src = arg_loc i in
+      let dest = lookup layout arg_uid in
+      (Movq, [src; dest])
+    ) f_param
+  in
 
-
-  let end_code = [
-    (Movq, [Reg Rbp; Reg Rsp]); (* Restore Rsp from Rbp *)
-    (Popq, [Reg Rbp]);          (* Pop the old base pointer *)
-    (Retq, []);                 (* Return from the function *)
-  ] in
-  let all_code = begin_code @ end_code in  
-  (*TODO:  Compile the function with f_cfg I think*)
-  [{ lbl = name; global = true; asm = Text all_code }]
+  [{ lbl = name; global = true; asm = Text begin_code }]
 
 
 

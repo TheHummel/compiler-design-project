@@ -12,10 +12,10 @@ test: main.native
 test-full: main.native
 	./main.native --full-test
 
-main.native:
+main.native: $(SUBMIT)
 	ocamlbuild -Is util,x86,ll,grading,sharedtests -libs unix,str main.native -use-menhir
 
-main.byte:
+main.byte: $(SUBMIT)
 	ocamlbuild -Is util,x86,ll,grading,sharedtests -libs unix,str main.byte -use-menhir
 
 .PHONY: utop repl

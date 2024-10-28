@@ -303,7 +303,7 @@ let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
 
 (* prog is a list of: type elem = { lbl: lbl; global: bool; asm: asm } *)
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
-  let stack_allocation_amout = Lit (Int64.of_int (if List.length f_param > 6 then 8 * (List.length f_param - 6) else 0))
+  let stack_allocation_amout = Imm ( Lit(Int64.of_int (if List.length f_param > 6 then 8 * (List.length f_param - 6) else 0))) in 
   let begin_code = [
     (Pushq, [Reg Rbp]);
     (Movq, [Reg Rsp; Reg Rbp]);
@@ -311,17 +311,16 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg
     (Subq, [stack_allocation_amout; Reg Rsp])
   ] in
   (* FIX IT  *)
-  let move_args = List.mapi (fun i args_uid ->
-    if n>6 then 
-      (Movq, [arg_loc i, ]) 
-    else (Movq, )) args
+
+
   let end_code = [
-    (Mov, [Reg Rbp; Reg Rsp]); (* Restore Rsp from Rbp *)
-    (Pop, [Reg Rbp]);          (* Pop the old base pointer *)
-    (Ret, []);                 (* Return from the function *)
+    (Movq, [Reg Rbp; Reg Rsp]); (* Restore Rsp from Rbp *)
+    (Popq, [Reg Rbp]);          (* Pop the old base pointer *)
+    (Retq, []);                 (* Return from the function *)
   ] in
+  let all_code = begin_code @ end_code in  
   (*TODO:  Compile the function with f_cfg I think*)
-  [{ lbl = name; global = true; asm = Text prologue }]
+  [{ lbl = name; global = true; asm = Text all_code }]
 
 
 

@@ -207,23 +207,26 @@ failwith "compile_gep not implemented"
 
    - Bitcast: does nothing interesting at the assembly level
 *)
+(* so wie ich es verstanden habe, ctxt zusatand aller variablen, uid variable in die geschrieben wird, insn die instruction dafür *)
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
   match i with
   (* lade die values von unseren beiden operands einfach mal in R10 and 11. Hoffe das passt so *)
   | Binop (operation, ty, operand1, operand2) -> 
-    let coperand1 = (compile_operand ctxt (Reg R10) operand1)  in
-    let coperand2 = (compile_operand ctxt (Reg R11) operand2)  in
+    let {tdecls; layout} = ctxt in
+    let coperand1 = [compile_operand ctxt (Reg R10) operand1 ] in
+    let coperand2 = [(compile_operand ctxt (Reg R11) operand2)]  in
     coperand1 @ coperand2 @ (
     match operation with
     | Add -> [(Addq, [(Reg R10); (Reg R11)])]
     | Sub -> [(Subq, [(Reg R10); (Reg R11)])]
-    | Mul -> [(Mulq, [(Reg R10); (Reg R11)])]
+    | Mul -> [(Imulq, [(Reg R10); (Reg R11)])]
     | Shl -> [(Shlq, [(Reg R10); (Reg R11)])]
-    | Lshr -> [(Lshrq, [(Reg R10); (Reg R11)])]
-    | Ashr -> [(Ashrq, [(Reg R10); (Reg R11)])]
+    | Lshr -> [(Shrq, [(Reg R10); (Reg R11)])]
+    | Ashr -> [(Sarq, [(Reg R10); (Reg R11)])]
     | And -> [(Andq, [(Reg R10); (Reg R11)])]
     | Or -> [(Orq, [(Reg R10); (Reg R11)])]
-    | Xor -> [(Xorq, [(Reg R10); (Reg R11)])])
+    | Xor -> [(Xorq, [(Reg R10); (Reg R11)])]
+    ) @ [(Movq, [(Reg R11); lookup layout uid])]
 
 | _ -> failwith "unimplemented"
 
@@ -262,9 +265,17 @@ let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
 (* implementation für task 2. NOT THE FULL ONE *)
   let end_shit = [(Movq, [Reg Rbp; Reg Rsp]); (Popq, [Reg Rbp]); (Retq, [])] in 
   match t with
+    | Ret (Void, None) -> end_shit
     | Ret (ty, Some o) -> [compile_operand ctxt (Reg Rax) o] @ end_shit
-    | Ret (ty, None) -> end_shit
-    | _ ->failwith " not implemented"
+    (* branch always *)
+    | Br lbl -> [(Jmp, [Imm(Lbl(mk_lbl fn lbl))])]
+    | Cbr (operand, lbl1, lbl2) ->
+      (* wenn gleich null dann ist die evaluation false else true  *)
+      let comp = [compile_operand ctxt (Reg R09) operand] in
+      comp @ [(Cmpq, [(Reg R09); (Imm (Lit 0L))]);
+        (J Neq, [Imm(Lbl(mk_lbl fn lbl2))]);
+        (Jmp, [Imm(Lbl(mk_lbl fn lbl1))])]
+    | _ ->failwith "not fitting terminator"
 
 
 (* compiling blocks --------------------------------------------------------- *)
@@ -275,8 +286,12 @@ let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
    [blk]  - LLVM IR code for the block
 *)
 (* insns is uid with instruction ins *)
-let compile_block (fn:string) (ctxt:ctxt) (blk:Ll.block) : ins list =
-  let {insns; term = (uid, terminator)} = blk in compile_terminator fn ctxt terminator
+  
+let compile_block (fn:string) (ctxt:ctxt) (blk:Ll.block) : ins list = 
+  let {insns; term = (uid, terminator)} = blk in 
+  let block_code = List.flatten(List.map (fun (uid, insn) -> compile_insn ctxt (uid, insn)) insns) in
+  let terminater_code = List.flatten([(compile_terminator fn ctxt terminator)]) in 
+  block_code @ terminater_code
 
 let compile_lbl_block fn lbl ctxt blk : elem =
   Asm.text (mk_lbl fn lbl) (compile_block fn ctxt blk)

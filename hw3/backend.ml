@@ -53,8 +53,8 @@ type layout = (uid * X86.operand) list
 
 (* A context contains the global type declarations (needed for getelementptr
    calculations) and a stack layout. *)
-type ctxt = { tdecls : (tid * ty) list
-            ; layout : layout
+type ctxt = { tdecls : (tid * ty) list (* maping Named types (as string ) then its type *)
+            ; layout : layout (* Local identifiers to there x86 operation *)
             }
 
 (* useful for looking up items in tdecls or layouts *)
@@ -88,8 +88,18 @@ let lookup m x = List.assoc x m
    the X86 instruction that moves an LLVM operand into a designated
    destination (usually a register).
 *)
+
+(* type ins = opcode * operand list *)
 let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
-  function _ -> failwith "compile_operand unimplemented"
+  let {tdecls; layout} = ctxt in 
+  fun operand ->
+    match operand with 
+    | Null -> (Movq, [Imm (Lit 0L); dest])
+    | Const c -> (Movq, [Imm (Lit c); dest])
+    (* globale identifier *)
+    | Gid g -> (Movq, [Imm (Lbl g); dest])
+    (* finds value and stores it in dest   *)
+    | Id i -> (Movq, [lookup layout i; dest])  
 
 
 
@@ -198,7 +208,24 @@ failwith "compile_gep not implemented"
    - Bitcast: does nothing interesting at the assembly level
 *)
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
-      failwith "compile_insn not implemented"
+  match i with
+  (* lade die values von unseren beiden operands einfach mal in R10 and 11. Hoffe das passt so *)
+  | Binop (operation, ty, operand1, operand2) -> 
+    let coperand1 = (compile_operand ctxt (Reg R10) operand1)  in
+    let coperand2 = (compile_operand ctxt (Reg R11) operand2)  in
+    coperand1 @ coperand2 @ (
+    match operation with
+    | Add -> [(Addq, [(Reg R10); (Reg R11)])]
+    | Sub -> [(Subq, [(Reg R10); (Reg R11)])]
+    | Mul -> [(Mulq, [(Reg R10); (Reg R11)])]
+    | Shl -> [(Shlq, [(Reg R10); (Reg R11)])]
+    | Lshr -> [(Lshrq, [(Reg R10); (Reg R11)])]
+    | Ashr -> [(Ashrq, [(Reg R10); (Reg R11)])]
+    | And -> [(Andq, [(Reg R10); (Reg R11)])]
+    | Or -> [(Orq, [(Reg R10); (Reg R11)])]
+    | Xor -> [(Xorq, [(Reg R10); (Reg R11)])])
+
+| _ -> failwith "unimplemented"
 
 
 

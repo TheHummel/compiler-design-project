@@ -247,8 +247,9 @@ let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
    [ctxt] - the current context
    [blk]  - LLVM IR code for the block
 *)
+(* insns is uid with instruction ins *)
 let compile_block (fn:string) (ctxt:ctxt) (blk:Ll.block) : ins list =
-  failwith "compile_block not implemented"
+  let {insns; term = (uid, terminator)} = blk in compile_terminator fn ctxt terminator
 
 let compile_lbl_block fn lbl ctxt blk : elem =
   Asm.text (mk_lbl fn lbl) (compile_block fn ctxt blk)
@@ -293,6 +294,7 @@ let arg_loc (n : int) : operand =
    - see the discussion about locals
 
 *)
+(* returns layout, which is  (uid * X86.operand)*)
 let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
   (* mapi i does this: (int -> 'a -> 'b) -> 'a list -> 'b list *)
   let arg_layout = List.mapi (fun i args_uid -> (args_uid, arg_loc i)) args in 
@@ -321,25 +323,25 @@ let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
   let stack_allocation_amout = Imm ( Lit(Int64.of_int (if List.length f_param > 6 then 8 * (List.length f_param - 6+2) else 0))) in 
   let layout = stack_layout f_param f_cfg in 
-  let ((insn, term), blocks) = f_cfg in
+  let (block, blocks) = f_cfg in
+  let {insns; term = (uid, terminator)} = block in
+  let ctxt = { tdecls; layout } in
   let begin_code = [
     (Pushq, [Reg Rbp]);
     (Movq, [Reg Rsp; Reg Rbp]);
     (* make space on stack for all the arguments if there are more then 6 and call stack layout*)
     (Subq, [stack_allocation_amout; Reg Rsp])
   ] in
-  (* MOVES   ARGUMENTS *)
+  (* MOVES ARGUMENTS*)
   let arg_moves =
     List.mapi (fun i arg_uid ->
-      let src = arg_loc i in
-      let dest = lookup layout arg_uid in
-      (Movq, [src; dest])
+      (Movq, [arg_loc i; lookup layout arg_uid])
     ) f_param
   in
-  let end_code = compile_terminator name { tdecls = tdecls; layout = layout} entry_block in
-  let all_code = begin_code @ end_code in
+  let end_code = compile_terminator name ctxt terminator in
+  let all_code = begin_code @ arg_moves @ end_code in
 
-  [{ lbl = name; global = true; asm = Text begin_code }]
+  [{ lbl = name; global = true; asm = Text all_code }]
 
 
 

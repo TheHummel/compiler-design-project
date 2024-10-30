@@ -245,6 +245,33 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     | Xor -> [(Xorq, [(Reg R10); (Reg R11)])]
     ) @ [(Movq, [(Reg R11); lookup layout uid])]
 
+  |Icmp (cnd, ty, operand1, operand2) ->
+    let {tdecls; layout} = ctxt in
+    let coperand1 = [(compile_operand ctxt (Reg R11)) operand1 ] in
+    let coperand2 = [(compile_operand ctxt (Reg R10)) operand2]  in
+    coperand1 @ coperand2 @ [
+      (Cmpq, [(Reg R10); (Reg R11)]);
+      (Set (compile_cnd cnd), [Reg R09]);
+      (Movq, [Reg R09; lookup layout uid])
+    ]
+
+  | Alloca ty ->
+    let {tdecls; layout} = ctxt in
+    [(Subq, [Imm (Lit 8L); Reg Rsp]);
+      (Movq, [Reg Rsp; lookup layout uid])]
+      (* TODO: handle other types of ty *)
+
+  | Load (ty, operand) ->
+    let {tdecls; layout} = ctxt in
+    let coperand = [(compile_operand ctxt (Reg R11)) operand] in
+    coperand @ [(Movq, [Ind2 R11; lookup layout uid])]
+
+  | Store (ty, operand1, operand2) ->
+    let {tdecls; layout} = ctxt in
+    let coperand1 = [(compile_operand ctxt (Reg R11)) operand1] in
+    let coperand2 = [(compile_operand ctxt (Reg R10)) operand2] in
+    coperand1 @ coperand2 @ [(Movq, [Reg R11; Ind2 R10])]
+
 | _ -> failwith "unimplemented"
 
 

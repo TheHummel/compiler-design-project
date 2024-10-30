@@ -249,7 +249,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     let {tdecls; layout} = ctxt in
     let coperand1 = [(compile_operand ctxt (Reg R11)) operand1 ] in
     let coperand2 = [(compile_operand ctxt (Reg R10)) operand2]  in
-    coperand1 @ coperand2 @ [
+    coperand1 @ coperand2 @ [(Movq, [Imm (Lit 0L); Reg R09])] @ [
       (Cmpq, [(Reg R10); (Reg R11)]);
       (Set (compile_cnd cnd), [Reg R09]);
       (Movq, [Reg R09; lookup layout uid])

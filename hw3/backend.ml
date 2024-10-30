@@ -267,7 +267,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     let temp_reg = (Movq, [Ind2 R11; Reg R10]) in
     let store = (Movq, [Reg R10; lookup layout uid]) in
     coperand @ [temp_reg; store]
-
+  
   | Store (ty, operand1, operand2) ->
     let {tdecls; layout} = ctxt in
     let coperand1 = [compile_operand ctxt (Reg R11) operand1] in
@@ -431,34 +431,36 @@ type cfg = block * (lbl * block) list
 *)
 (* TODO *)
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
-  let stack_allocation_amout = Imm ( Lit(Int64.of_int (if List.length f_param > 6 then 8 * (List.length f_param - 6+2) else 0))) in 
+  let name = Platform.mangle name in
+  let stack_allocation_amount = Imm (Lit (Int64.of_int (
+    if List.length f_param > 6 then 8 * (List.length f_param - 6 + 2) else 0
+  ))) in 
   let layout = stack_layout f_param f_cfg in 
   let (block, blocks) = f_cfg in
-  let {insns; term = (uid, terminator)} = block in
   let ctxt = { tdecls; layout } in
   let begin_code = [
     (Pushq, [Reg Rbp]);
     (Movq, [Reg Rsp; Reg Rbp]);
-    (* make space on stack for all the arguments if there are more then 6 and call stack layout*)
-    (Subq, [stack_allocation_amout; Reg Rsp])
+    (Subq, [stack_allocation_amount; Reg Rsp])
   ] in
   (* MOVES ARGUMENTS*)
-  let arg_moves =
+  let arg_moves = 
     List.mapi (fun i arg_uid ->
-      (Movq, [arg_loc i; lookup layout arg_uid])
-    ) f_param
+    (Movq, [arg_loc i; lookup layout arg_uid])
+  ) f_param
   in
-  let entry_block_code = compile_block name ctxt block in
+
+  let entry_block_code = begin_code @ arg_moves @ compile_block name ctxt block in
+  let entry_elem = { lbl = name; global = true; asm = Text entry_block_code } in
+
   let compile_and_label_block (lbl, blk) =
     let block_label = mk_lbl name lbl in
     let block_code = compile_block name ctxt blk in
-    (block_label, block_code)
+    { lbl = block_label; global = false; asm = Text block_code }
   in
-  let compiled_labeled_blocks = List.map compile_and_label_block blocks in
-  let labeled_block_codes = List.flatten (List.map snd compiled_labeled_blocks) in
-  let all_code = begin_code @ arg_moves @ entry_block_code @ labeled_block_codes in
-  [{ lbl = name; global = true; asm = Text all_code }]
+  let labeled_block_elems = List.map compile_and_label_block blocks in
 
+  entry_elem :: labeled_block_elems
 
 
 (* compile_gdecl ------------------------------------------------------------ *)

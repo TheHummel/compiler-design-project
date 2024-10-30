@@ -349,7 +349,19 @@ let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
   (* mapi i does this: (int -> 'a -> 'b) -> 'a list -> 'b list *)
   let arg_layout = List.mapi (fun i args_uid -> (args_uid, arg_loc i)) args in 
    (*TODO*)
-   arg_layout
+   let gather_uids_from_block (block: Ll.block) =
+    let { insns; term = (uid, _) } = block in
+    let insn_uids = List.map fst insns in
+    uid :: insn_uids
+  in
+  let entry_uids = gather_uids_from_block block in
+  let labeled_uids = List.flatten (List.map (fun (_, blk) -> gather_uids_from_block blk) lbled_blocks) in
+  let all_uids = entry_uids @ labeled_uids in
+  let unique_uids = List.filter (fun uid -> not (List.mem uid args)) all_uids in
+  let start_index = List.length args in
+  let local_layout = List.mapi (fun i uid -> (uid, Ind3 (Lit (Int64.of_int ((i + start_index) * 8)), Rbp))) unique_uids in
+
+  arg_layout @ local_layout
 
 
 (* The code for the entry-point of a function must do several things:

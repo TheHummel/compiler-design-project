@@ -224,9 +224,15 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     | Add -> [(Addq, [(Reg R10); (Reg R11)])]
     | Sub -> [(Subq, [(Reg R10); (Reg R11)])]
     | Mul -> [(Imulq, [(Reg R10); (Reg R11)])]
-    | Shl -> [(Shlq, [(Reg R10); (Reg R11)])]
-    | Lshr -> [(Shrq, [(Reg R10); (Reg R11)])]
-    | Ashr -> [(Sarq, [(Reg R10); (Reg R11)])]
+    | Shl | Lshr | Ashr -> 
+      begin match operand2 with
+      | Const c -> 
+        match operation with
+        | Shl -> [(Shlq, [(Imm (Lit c)); (Reg R11)])]
+        | Lshr -> [(Shrq, [(Imm (Lit c)); (Reg R11)])]
+        | Ashr -> [(Sarq, [(Imm (Lit c)); (Reg R11)])]
+      | _ -> failwith "Shl operand1 should be constant"
+    end
     | And -> [(Andq, [(Reg R10); (Reg R11)])]
     | Or -> [(Orq, [(Reg R10); (Reg R11)])]
     | Xor -> [(Xorq, [(Reg R10); (Reg R11)])]

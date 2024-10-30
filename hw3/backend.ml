@@ -217,8 +217,8 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
   (* lade die values von unseren beiden operands einfach mal in R10 and 11. Hoffe das passt so *)
   | Binop (operation, ty, operand1, operand2) -> 
     let {tdecls; layout} = ctxt in
-    let coperand1 = [compile_operand ctxt (Reg R10) operand1 ] in
-    let coperand2 = [(compile_operand ctxt (Reg R11) operand2)]  in
+    let coperand1 = [(compile_operand ctxt (Reg R11)) operand1 ] in
+    let coperand2 = [(compile_operand ctxt (Reg R10)) operand2]  in
     coperand1 @ coperand2 @ (
     match operation with
     | Add -> [(Addq, [(Reg R10); (Reg R11)])]
@@ -266,7 +266,7 @@ let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
     { Cbr (o,l1,l2) } *)
 
 
-(* Fertig I think *)
+(* Fertig *)
 let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
   let end_shit = [(Movq, [Reg Rbp; Reg Rsp]); (Popq, [Reg Rbp]); (Retq, [])] in 
   match t with
@@ -277,8 +277,8 @@ let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
     | Cbr (operand, lbl1, lbl2) ->
       (* wenn gleich null dann ist die evaluation false else true  *)
       let comp = [compile_operand ctxt (Reg R09) operand] in
-      comp @ [(Cmpq, [(Reg R09); (Imm (Lit 0L))]);
-        (J Neq, [Imm(Lbl(mk_lbl fn lbl2))]);
+      comp @ [(Cmpq, [(Imm (Lit 0L)); (Reg R09)]);
+        (J Eq, [Imm(Lbl(mk_lbl fn lbl2))]);  (* not sure why but yeah *)
         (Jmp, [Imm(Lbl(mk_lbl fn lbl1))])]
     | _ ->failwith "not fitting terminator"
 
@@ -369,7 +369,9 @@ let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
      to hold all of the local stack slots.
 *)
 
-(* prog is a list of: type elem = { lbl: lbl; global: bool; asm: asm } *)
+(* prog is a list of: type elem = { lbl: lbl; global: bool; asm: asm } 
+type cfg = block * (lbl * block) list
+*)
 (* TODO *)
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
   let stack_allocation_amout = Imm ( Lit(Int64.of_int (if List.length f_param > 6 then 8 * (List.length f_param - 6+2) else 0))) in 
@@ -389,9 +391,15 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg
       (Movq, [arg_loc i; lookup layout arg_uid])
     ) f_param
   in
-  let end_code = compile_terminator name ctxt terminator in
-  let all_code = begin_code @ arg_moves @ end_code in
-
+  let entry_block_code = compile_block name ctxt block in
+  let compile_and_label_block (lbl, blk) =
+    let block_label = mk_lbl name lbl in
+    let block_code = compile_block name ctxt blk in
+    (block_label, block_code)
+  in
+  let compiled_labeled_blocks = List.map compile_and_label_block blocks in
+  let labeled_block_codes = List.flatten (List.map snd compiled_labeled_blocks) in
+  let all_code = begin_code @ arg_moves @ entry_block_code @ labeled_block_codes in
   [{ lbl = name; global = true; asm = Text all_code }]
 
 

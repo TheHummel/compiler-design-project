@@ -257,9 +257,9 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
 
   | Alloca ty ->
     let {tdecls; layout} = ctxt in
-    [(Subq, [Imm (Lit 8L); Reg Rsp]);
+    let alloc_size = size_ty tdecls ty in
+    [(Subq, [Imm (Lit (Int64.of_int alloc_size)); Reg Rsp]);
       (Movq, [Reg Rsp; lookup layout uid])]
-      (* TODO: handle other types of ty *)
 
   | Load (ty, operand) ->
     let {tdecls; layout} = ctxt in

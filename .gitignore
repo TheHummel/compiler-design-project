@@ -1,7 +1,11 @@
 *.zip
 *:*Zone.Identifier
+*.out
+*.o
+*.s
 
 _build/
 
+main.native
 
 commands.txt

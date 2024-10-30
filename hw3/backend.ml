@@ -98,7 +98,9 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
     | Null -> (Movq, [Imm (Lit 0L); dest])
     | Const c -> (Movq, [Imm (Lit c); dest])
     (* globale identifier *)
-    | Gid g -> (Movq, [Imm (Lbl g); dest])
+    | Gid g -> 
+      let mangled_name = Platform.mangle g in
+      (Leaq, [Ind3 (Lbl mangled_name, Rip); dest])
     (* finds value and stores it in dest   *)
     | Id i -> (Movq, [lookup layout i; dest])  
 

@@ -234,10 +234,12 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     | Shl | Lshr | Ashr -> 
       begin match operand2 with
       | Const c -> 
-        match operation with
+        begin match operation with
         | Shl -> [(Shlq, [(Imm (Lit c)); (Reg R11)])]
         | Lshr -> [(Shrq, [(Imm (Lit c)); (Reg R11)])]
         | Ashr -> [(Sarq, [(Imm (Lit c)); (Reg R11)])]
+      
+      end
       | _ -> failwith "Shl operand1 should be constant"
     end
     | And -> [(Andq, [(Reg R10); (Reg R11)])]

@@ -148,11 +148,15 @@ let compile_call (ctxt:ctxt) (fn:gid) (args:(Ll.ty * Ll.operand) list) : X86.ins
 
   let moves = List.mapi (
     fun i (_, operand) -> (
-      let dest = arg_loc i in
+      let dest = if n_args <6 then arg_loc i else (Reg Rdx) in
       if i < 6 then
         [compile_operand ctxt dest operand]
-      else
-        [compile_operand ctxt (Reg R10) operand; (Pushq, [Reg R10])]
+      else 
+        match operand with
+        | Null -> [(Movq, [Imm (Lit 0L); dest]); (Pushq, [dest])] 
+        | Const c -> [(Movq, [Imm (Lit c); dest]); (Pushq, [dest])] 
+        | Gid g -> failwith "Not a falid thing to push on stack before function call"
+        | Id i -> [(Movq, [lookup layout i; dest]); (Pushq, [dest])] 
     )
   ) args in
 

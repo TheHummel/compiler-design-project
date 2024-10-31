@@ -227,7 +227,47 @@ let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
       by the path so far
 *)
 let compile_gep (ctxt:ctxt) (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
-failwith "compile_gep not implemented"
+  let {tdecls; layout} = ctxt in
+  let (ty, operand) = op in
+  begin match ty with
+  | Ptr t -> 
+    let t_size = size_ty tdecls t in
+    let coperand_op = [compile_operand ctxt (Reg R11) operand] in
+    let h_path::tl_path = path in
+    let coperand_h = [compile_operand ctxt (Reg R10) h_path] in
+    let temp_reg = (Imulq, [(Imm (Lit (Int64.of_int t_size)); (Reg R10))]) in
+    let add = (Addq, [(Reg R10); (Reg R11)]) in
+    let rec compile_path type_path path = 
+      begin match (type_path, path) with
+      | (Namedt tid, h::tl) ->
+        let type_namedt = lookup tdecls tid in
+        compile_path type_namedt tl
+      | (Array (_, type_array), h::tl) ->
+        let entry_size = size_ty tdecls type_array in
+        let cpath = [compile_operand ctxt (Reg R10) h] in
+        let temp_reg_r = (Imulq, [(Imm (Lit (Int64.of_int entry_size)); (Reg R10))]) in
+        let add_r = (Addq, [(Reg R10); (Reg R11)]) in
+        cpath @ [temp_reg_r; add_r] @ compile_path type_array tl
+      | (Struct strc, Const c::tl) -> 
+        let rec sum i (list) =
+          match list with
+          | c::_ -> (0L, c)
+          | h::tl -> 
+            let (acc, total) = sum (Int64.sub i 1L) tl in 
+            (Int64.add acc (Int64.of_int (size_ty tdecls h)), total)
+        in
+        let (offset, ty) = sum c strc in
+        (Addq, [Imm (Lit offset); Reg R08])::(compile_path ty tl)
+      | (_, []) -> []
+      | _ -> failwith "should be namedt, array or struct"
+
+      end
+    in
+    coperand_op @ coperand_h @ [temp_reg; add] @ compile_path t tl_path
+
+  | _ -> failwith "should be pointer type"
+  end
+
 
 
 
@@ -327,6 +367,12 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     let coperand = [compile_operand ctxt (Reg R11) operand] in
     let store = (Movq, [Reg R11; lookup layout uid]) in
     coperand @ [store]
+
+  | Gep (ty, operand, path) -> 
+    let {tdecls; layout} = ctxt in
+    compile_gep ctxt (ty, operand) path @ [(Movq, [Reg R11; lookup layout uid])]
+
+
       
 
 | _ -> failwith "unimplemented"

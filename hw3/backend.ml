@@ -239,9 +239,9 @@ let compile_gep (ctxt:ctxt) (op : Ll.ty * Ll.operand) (path: Ll.operand list) : 
     let add = (Addq, [Reg R10; Reg R11]) in
     let rec compile_path type_path path = 
       begin match (type_path, path) with
-      | (Namedt tid, h::tl) ->
+      | (Namedt tid, path_rest) ->
         let type_namedt = lookup tdecls tid in
-        compile_path type_namedt tl
+        compile_path type_namedt path_rest
       | (Array (_, type_array), h::tl) ->
         let entry_size = Int64.of_int (size_ty tdecls type_array) in
         let cpath = [compile_operand ctxt (Reg R10) h] in
@@ -249,15 +249,16 @@ let compile_gep (ctxt:ctxt) (op : Ll.ty * Ll.operand) (path: Ll.operand list) : 
         let add_r = (Addq, [Reg R10; Reg R11]) in
         cpath @ [temp_reg_r; add_r] @ compile_path type_array tl
       | (Struct strc, Const c::tl) -> 
-        let rec sum i (list) =
-          match list with
-          | c::_ -> (0L, c)
-          | h::tl -> 
-            let (acc, total) = sum (Int64.sub i 1L) tl in 
-            (Int64.add acc (Int64.of_int (size_ty tdecls h)), total)
+        let rec sum i list = 
+          match (i, list) with
+          | (0L, h::_) -> (0L, h)
+          | (i, h::tl) -> 
+            let (acc, tp) = sum (Int64.sub i 1L) tl in 
+            (Int64.add acc (Int64.of_int (size_ty tdecls h)), tp)
+          | _ -> failwith "failed sum"
         in
-        let (offset, ty) = sum c strc in
-        (Addq, [Imm (Lit offset); Reg R11])::(compile_path ty tl)
+        let (offset, tp) = sum c strc in
+        (Addq, [Imm (Lit offset); Reg R11])::(compile_path tp tl)
       | (_, []) -> []
       | _ -> failwith "should be namedt, array or struct"
 

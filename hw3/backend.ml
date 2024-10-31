@@ -148,15 +148,11 @@ let compile_call (ctxt:ctxt) (fn:gid) (args:(Ll.ty * Ll.operand) list) : X86.ins
 
   let moves = List.mapi (
     fun i (_, operand) -> (
-      let dest = if n_args <6 then arg_loc i else (Reg Rdx) in
+      let dest = arg_loc i in
       if i < 6 then
         [compile_operand ctxt dest operand]
-      else 
-        match operand with
-        | Null -> [(Movq, [Imm (Lit 0L); dest]); (Pushq, [dest])] 
-        | Const c -> [(Movq, [Imm (Lit c); dest]); (Pushq, [dest])] 
-        | Gid g -> failwith "Not a falid thing to push on stack before function call"
-        | Id i -> [(Movq, [lookup layout i; dest]); (Pushq, [dest])] 
+      else
+        [compile_operand ctxt (Reg R10) operand; (Pushq, [Reg R10])]
     )
   ) args in
 
@@ -439,9 +435,9 @@ let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
   in
   let entry_uids = gather_uids_from_block block in
   let labeled_uids = List.flatten (List.map (fun (_, blk) -> gather_uids_from_block blk) lbled_blocks) in
-  let all_uids = entry_uids @ labeled_uids in
+  let all_uids = args @ entry_uids @ labeled_uids in
   let unique_uids = List.filter (fun uid -> not (List.mem uid args)) all_uids in
-  let start_index = List.length args in
+  let start_index = 8 * List.length args in
   let local_layout = List.mapi (fun i uid -> (uid, Ind3 (Lit (Int64.of_int ((i + start_index) * 8)), Rbp))) unique_uids in
 
   arg_layout @ local_layout
@@ -484,8 +480,12 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg
   (* MOVES ARGUMENTS*)
   let arg_moves = 
     List.mapi (fun i arg_uid ->
-    (Movq, [arg_loc i; lookup layout arg_uid])
+      let src = arg_loc i in
+      let dest = lookup layout arg_uid in
+      if src = dest then []
+      else [(Movq, [src; dest])]
   ) f_param
+  |> List.flatten 
   in
 
   let entry_block_code = begin_code @ arg_moves @ compile_block name ctxt block in

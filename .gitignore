@@ -8,4 +8,6 @@ _build/
 
 main.native
 
+exec
+
 commands.txt

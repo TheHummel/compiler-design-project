@@ -126,6 +126,43 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
    needed). ]
 *)
 
+let arg_loc (n : int) : operand =
+  if n<6 then 
+    match n with 
+    | 0 -> Reg Rdi
+    | 1 -> Reg Rsi
+    | 2 -> Reg Rdx
+    | 3 -> Reg Rcx
+    | 4 -> Reg R08
+    | 5 -> Reg R09
+    | _ -> failwith "n should not be neg"
+  else 
+    Ind3 (Lit (Int64.of_int (((n-6)+2)*(8))), Rbp) 
+
+
+    
+let compile_call (ctxt:ctxt) (fn:gid) (args:(Ll.ty * Ll.operand) list) : X86.ins list =
+  let {tdecls; layout} = ctxt in
+  let n_args = List.length args in
+
+
+  let moves = List.mapi (
+    fun i (_, operand) -> (
+      let dest = arg_loc i in
+      if i < 6 then
+        [compile_operand ctxt dest operand]
+      else
+        [compile_operand ctxt (Reg R10) operand; (Pushq, [Reg R10])]
+    )
+  ) args in
+
+
+  let arg_moves = List.flatten moves in
+
+
+  let call = [(Callq, [Imm (Lbl (Platform.mangle fn))])] in
+  let cleanup = [(Addq, [Imm (Lit (Int64.of_int (8 * if n_args>6 then List.length arg_moves - 6 else 0))); Reg Rsp]) ] in
+  arg_moves @ call @ cleanup
 
 
 
@@ -277,6 +314,12 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     let temp_reg = (Movq, [Reg R11; Reg Rax]) in
     let store = (Movq, [Reg Rax; Ind2 R10]) in
     coperand1 @ coperand2 @ [temp_reg; store]
+
+  | Call (ty, operand, args) ->
+    let {tdecls; layout} = ctxt in
+    match operand with
+    | Gid g -> compile_call ctxt g args @ [(Movq, [Reg Rax; lookup layout uid])]
+    | _ -> failwith "operand should be gid"
       
 
 | _ -> failwith "unimplemented"
@@ -367,18 +410,7 @@ Placing additional arguments in stack slots relative to %rbp. *)
 (*  1 .. 6:  rdi, rsi, rdx, rcx, r8, r9– 7+: on the stack (in right-to-left order)– Thus, for n > 6,  the nth argument is at  ((n-7)+2)*8 + rb *)
 (* WHICH FORMULAR? this or this one: -8 * (n - 5) *)
 (* Fertig *)
-let arg_loc (n : int) : operand =
-  if n<6 then 
-    match n with 
-    | 0 -> Reg Rdi
-    | 1 -> Reg Rsi
-    | 2 -> Reg Rdx
-    | 3 -> Reg Rcx
-    | 4 -> Reg R08
-    | 5 -> Reg R09
-    | _ -> failwith "n should not be neg"
-  else 
-    Ind3 (Lit (Int64.of_int (((n-6)+2)*(8))), Rbp) 
+
 
 
 (* We suggest that you create a helper function that computes the

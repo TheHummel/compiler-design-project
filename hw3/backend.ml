@@ -317,9 +317,16 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
 
   | Call (ty, operand, args) ->
     let {tdecls; layout} = ctxt in
-    match operand with
+    begin match operand with
     | Gid g -> compile_call ctxt g args @ [(Movq, [Reg Rax; lookup layout uid])]
     | _ -> failwith "operand should be gid"
+    end
+
+  | Bitcast (ty1, operand, ty2) ->
+    let {tdecls; layout} = ctxt in
+    let coperand = [compile_operand ctxt (Reg R11) operand] in
+    let store = (Movq, [Reg R11; lookup layout uid]) in
+    coperand @ [store]
       
 
 | _ -> failwith "unimplemented"

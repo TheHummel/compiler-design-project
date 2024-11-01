@@ -165,6 +165,7 @@ let compile_call (ctxt:ctxt) (fn:gid) (args:(Ll.ty * Ll.operand) list) : X86.ins
   arg_moves @ call @ cleanup
 
 
+    
 
 (* compiling getelementptr (gep)  ------------------------------------------- *)
 
@@ -301,6 +302,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
   match i with
   (* lade die values von unseren beiden operands einfach mal in R10 and 11. Hoffe das passt so *)
   | Binop (operation, ty, operand1, operand2) -> 
+    let dest = lookup ctxt.layout uid in
     let {tdecls; layout} = ctxt in
     let coperand1 = [(compile_operand ctxt (Reg R11)) operand1 ] in
     let coperand2 = [(compile_operand ctxt (Reg R10)) operand2]  in
@@ -323,7 +325,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     | And -> [(Andq, [(Reg R10); (Reg R11)])]
     | Or -> [(Orq, [(Reg R10); (Reg R11)])]
     | Xor -> [(Xorq, [(Reg R10); (Reg R11)])]
-    ) @ [(Movq, [(Reg R11); lookup layout uid])]
+    ) @ [(Movq, [(Reg R11); dest])]
 
   |Icmp (cnd, ty, operand1, operand2) ->
     let {tdecls; layout} = ctxt in
@@ -479,10 +481,7 @@ Placing additional arguments in stack slots relative to %rbp. *)
 (* returns layout, which is  (uid * X86.operand)*)
 (* TODO *)
 let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
-  (* mapi i does this: (int -> 'a -> 'b) -> 'a list -> 'b list *)
-  let arg_layout = List.mapi (fun i args_uid -> (args_uid, arg_loc i)) args in 
-   (*TODO*)
-   let gather_uids_from_block (block: Ll.block) =
+  let gather_uids_from_block (block: Ll.block) =
     let { insns; term = (uid, _) } = block in
     let insn_uids = List.map fst insns in
     uid :: insn_uids
@@ -490,12 +489,12 @@ let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
   let entry_uids = gather_uids_from_block block in
   let labeled_uids = List.flatten (List.map (fun (_, blk) -> gather_uids_from_block blk) lbled_blocks) in
   let all_uids = args @ entry_uids @ labeled_uids in
-  let unique_uids = List.filter (fun uid -> not (List.mem uid args)) all_uids in
-  let start_index = 8 * List.length args in
-  let local_layout = List.mapi (fun i uid -> (uid, Ind3 (Lit (Int64.of_int ((i + start_index) * 8)), Rbp))) unique_uids in
+  let unique_uids = List.sort_uniq String.compare all_uids in
 
-  arg_layout @ local_layout
+  
+  let final_layout = List.mapi (fun i uid -> (uid, Ind3 (Lit (Int64.of_int ((i + 1) * -8)), Rbp))) unique_uids in
 
+  final_layout
 
 (* The code for the entry-point of a function must do several things:
 
@@ -520,10 +519,13 @@ type cfg = block * (lbl * block) list
 (* TODO *)
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
   let name = Platform.mangle name in
-  let stack_allocation_amount = Imm (Lit (Int64.of_int (
-    if List.length f_param > 6 then 8 * (List.length f_param - 6 + 2) else 0
-  ))) in 
-  let layout = stack_layout f_param f_cfg in 
+  let layout = stack_layout f_param f_cfg in
+  let stack_size = 8 * List.length layout in
+  let stack_size_aligned =
+    if stack_size mod 16 = 0 then stack_size
+    else stack_size + (16 - (stack_size mod 16))
+  in
+  let stack_allocation_amount = Imm (Lit (Int64.of_int stack_size_aligned)) in
   let (block, blocks) = f_cfg in
   let ctxt = { tdecls; layout } in
   let begin_code = [
@@ -531,17 +533,20 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg
     (Movq, [Reg Rsp; Reg Rbp]);
     (Subq, [stack_allocation_amount; Reg Rsp])
   ] in
-  (* MOVES ARGUMENTS*)
-  let arg_moves = 
+  let arg_moves =
     List.mapi (fun i arg_uid ->
       let src = arg_loc i in
       let dest = lookup layout arg_uid in
       if src = dest then []
-      else [(Movq, [src; dest])]
-  ) f_param
-  |> List.flatten 
+      else
+      match (src, dest) with
+      | (Reg _, _) | (_, Reg _) -> [(Movq, [src; dest])]
+      | _ ->
+          [ (Movq, [src; Reg R10]); (Movq, [Reg R10; dest]) ]
+    ) f_param
   in
-
+  let arg_moves = List.flatten arg_moves in
+  
   let entry_block_code = begin_code @ arg_moves @ compile_block name ctxt block in
   let entry_elem = { lbl = name; global = true; asm = Text entry_block_code } in
 
@@ -553,6 +558,7 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg
   let labeled_block_elems = List.map compile_and_label_block blocks in
 
   entry_elem :: labeled_block_elems
+
 
 
 (* compile_gdecl ------------------------------------------------------------ *)

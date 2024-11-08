@@ -45,6 +45,28 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %nonassoc LBRACKET
 %nonassoc LPAREN
 
+/* additional tokens */
+%token TBOOL    /* bool */
+%token TRUE     /* true */
+%token FALSE    /* false */
+
+%token SHIFTL   /* << */
+%token SHIFTR   /* >> */
+%token SAR      /* >>> */
+%token LT       /* < */
+%token LTE      /* <= */
+%token GT       /* > */
+%token GTE      /* >= */
+%token NEQ      /* != */
+%token AND      /* & */
+%token OR       /* | */
+%token BAND     /* [&] */
+%token BOR      /* [|] */
+
+%token NEW      /* new */
+
+%token FOR      /* for */
+
 /* ---------------------------------------------------------------------- */
 
 %start prog

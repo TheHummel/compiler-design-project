@@ -102,7 +102,10 @@ arglist:
     
 ty:
   | TINT   { TInt }
+  | TBOOL  { TBool }
   | r=rtyp { TRef r } 
+
+/* maybe Todo: F: (t1...tn) -> retty */
 
 %inline ret_ty:
   | TVOID  { RetVoid }
@@ -117,6 +120,19 @@ ty:
   | DASH   { Sub }
   | STAR   { Mul }
   | EQEQ   { Eq }
+  | NEQ    { Neq }
+  | LT     { Lt }
+  | LTE    { Lte }
+  | GT     { Gt }
+  | GTE    { Gte }
+  | AND    { And }
+  | OR     { Or }
+  | BAND   { IAnd }
+  | BOR    { IOr }
+  | SHIFTL { Shl }
+  | SHIFTR { Shr }
+  | SAR    { Sar }
+
 
 %inline uop:
   | DASH  { Neg }
@@ -126,6 +142,11 @@ ty:
 gexp:
   | t=rtyp NULL  { loc $startpos $endpos @@ CNull t }
   | i=INT      { loc $startpos $endpos @@ CInt i }
+  | s=STRING   { loc $startpos $endpos @@ CStr s }
+  | b=TRUE    { loc $startpos $endpos @@ CBool true }
+  | b=FALSE   { loc $startpos $endpos @@ CBool false }
+  | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, gexp) RBRACE
+               { loc $startpos $endpos @@ CArr (t, es) }
 
 lhs:  
   | id=IDENT            { loc $startpos $endpos @@ Id id }
@@ -138,11 +159,21 @@ exp:
   | e1=exp b=bop e2=exp { loc $startpos $endpos @@ Bop (b, e1, e2) }
   | u=uop e=exp         { loc $startpos $endpos @@ Uop (u, e) }
   | id=IDENT            { loc $startpos $endpos @@ Id id }
+  | s=STRING            { loc $startpos $endpos @@ CStr s }
+  | b=TRUE              { loc $startpos $endpos @@ CBool true }
+  | b=FALSE             { loc $startpos $endpos @@ CBool false }
   | e=exp LBRACKET i=exp RBRACKET
                         { loc $startpos $endpos @@ Index (e, i) }
   | e=exp LPAREN es=separated_list(COMMA, exp) RPAREN
                         { loc $startpos $endpos @@ Call (e,es) }
   | LPAREN e=exp RPAREN { e } 
+  | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE
+                        { loc $startpos $endpos @@ CArr (t, es) }
+  | NEW TINT LBRACKET e=exp RBRACKET
+                        { loc $startpos $endpos @@ NewArr (TInt, e) }
+  | NEW TBOOL LBRACKET e=exp RBRACKET
+                        { loc $startpos $endpos @@ NewArr (TBool, e) }
+      
 
 vdecl:
   | VAR id=IDENT EQ init=exp { (id, init) }
@@ -157,6 +188,8 @@ stmt:
   | RETURN e=exp SEMI   { loc $startpos $endpos @@ Ret(Some e) }
   | WHILE LPAREN e=exp RPAREN b=block  
                         { loc $startpos $endpos @@ While(e, b) } 
+  | FOR LPAREN v=list(vdecl) SEMI e=exp SEMI sm=stmt RPAREN b=block
+                        { loc $startpos $endpos @@ For(v, (Some e), (Some sm), b) } 
 
 block:
   | LBRACE stmts=list(stmt) RBRACE { stmts }

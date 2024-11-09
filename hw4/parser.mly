@@ -176,16 +176,10 @@ exp:
   | e=exp LPAREN es=separated_list(COMMA, exp) RPAREN
                         { loc $startpos $endpos @@ Call (e,es) }
   | LPAREN e=exp RPAREN { e } 
-  | NEW TINT LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE
-                        { loc $startpos $endpos @@ CArr (TInt, es) }
-  | NEW TBOOL LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE
-                        { loc $startpos $endpos @@ CArr (TBool, es) }
-  | NEW t=rtyp LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE
-                        { loc $startpos $endpos @@ CArr (TRef t, es) }
-  | NEW TINT LBRACKET e=exp RBRACKET
-                        { loc $startpos $endpos @@ NewArr (TInt, e) }
-  | NEW TBOOL LBRACKET e=exp RBRACKET
-                        { loc $startpos $endpos @@ NewArr (TBool, e) }
+  | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE
+                        { loc $startpos $endpos @@ CArr (t, es) }
+  | NEW t=ty LBRACKET e=exp RBRACKET
+                        { loc $startpos $endpos @@ NewArr (t, e) }
       
 
 vdecl:

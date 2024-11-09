@@ -38,12 +38,6 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token BANG     /* ! */
 %token GLOBAL   /* global */
 
-%left PLUS DASH
-%left STAR
-%nonassoc BANG
-%nonassoc TILDE
-%nonassoc LBRACKET
-%nonassoc LPAREN
 
 /* additional tokens */
 %token TBOOL    /* bool */
@@ -66,6 +60,21 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token NEW      /* new */
 
 %token FOR      /* for */
+
+/* adjusted precedence */
+%left BOR
+%left BAND
+%left OR
+%left AND
+%left EQEQ NEQ
+%left LT LTE GT GTE
+%left SHIFTL SHIFTR SAR
+%left PLUS DASH
+%left STAR
+%nonassoc BANG
+%nonassoc TILDE
+%nonassoc LBRACKET
+%nonassoc LPAREN
 
 /* ---------------------------------------------------------------------- */
 

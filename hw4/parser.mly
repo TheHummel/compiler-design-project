@@ -197,8 +197,8 @@ stmt:
   | RETURN e=exp SEMI   { loc $startpos $endpos @@ Ret(Some e) }
   | WHILE LPAREN e=exp RPAREN b=block  
                         { loc $startpos $endpos @@ While(e, b) } 
-  | FOR LPAREN v=list(vdecl) SEMI e=exp SEMI sm=stmt RPAREN b=block
-                        { loc $startpos $endpos @@ For(v, (Some e), (Some sm), b) } 
+  | FOR LPAREN v=separated_list(COMMA, vdecl) SEMI e=option(exp) SEMI sm=option(stmt) RPAREN b=block
+                        { loc $startpos $endpos @@ For(v, e, sm, b) } 
 
 block:
   | LBRACE stmts=list(stmt) RBRACE { stmts }

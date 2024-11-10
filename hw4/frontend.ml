@@ -303,9 +303,11 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
      (CArr) and the (NewArr) expressions
 
 *)
-
+(* hard *)
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
-  failwith "cmp_exp not implemented"
+  match exp with
+  | CInt -> (I64, Const i, [])
+  | _ -> failwith "unimplemented"
 
 (* Compile a statement in context c with return typ rt. Return a new context, 
    possibly extended with new local bindings, and the instruction stream
@@ -334,6 +336,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
  *)
 
+ (* hard *)
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   failwith "cmp_stmt not implemented"
 
@@ -365,6 +368,7 @@ let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    Only a small subset of OAT expressions can be used as global initializers
    in well-formed programs. (The constructors starting with C). 
 *)
+(* easy *)
 let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
   failwith "cmp_global_ctxt not implemented"
 
@@ -379,7 +383,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    4. Compile the body of the function using cmp_block
    5. Use cfg_of_stream to produce a LLVMlite cfg from 
  *)
-
+(* easy-mid *)
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
   failwith "cmp_fdecl not implemented"
 
@@ -394,7 +398,7 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
    - OAT arrays are always handled via pointers. A global array of arrays will
      be an array of pointers to arrays emitted as additional global declarations.
 *)
-
+(* easy *)
 let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   failwith "cmp_gexp not implemented"
 

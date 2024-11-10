@@ -392,8 +392,36 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    5. Use cfg_of_stream to produce a LLVMlite cfg from 
  *)
 
-let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
-  failwith "cmp_fdecl not implemented"
+ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
+  let { frtyp; fname; args; body } = f.elt in
+  let ret_ty = cmp_ret_ty frtyp in
+  let arg_types = List.map (fun (t, _) -> cmp_ty t) args in
+
+  let entry_allocas, arg_bindings = 
+    List.fold_left (fun (allocas, bindings) (ty, arg_name) ->
+      let ll_ty = cmp_ty ty in
+      let uid_alloca = gensym arg_name in
+      let alloca_instruction = uid_alloca, Alloca ll_ty in
+      let uid_store = gensym "store" in
+      let store_instruction = uid_store, Store (ll_ty, Id arg_name, Id uid_alloca) in
+      let allocas = E (fst alloca_instruction, snd alloca_instruction) :: E (fst store_instruction, snd store_instruction) :: allocas in
+      let bindings = Ctxt.add bindings arg_name (ll_ty, Id uid_alloca) in
+      (allocas, bindings)
+    ) ([], c) args
+  in
+
+  let body_ctxt, body_stream = cmp_block arg_bindings ret_ty body in
+
+  let cfg, gdecls = cfg_of_stream (entry_allocas @ body_stream) in
+
+  let fdecl = {
+    f_ty = (arg_types, ret_ty);
+    f_param = List.map snd args;
+    f_cfg = cfg;
+  } in
+
+  fdecl, gdecls
+
 
 (* Compile a global initializer, returning the resulting LLVMlite global
    declaration, and a list of additional global declarations.

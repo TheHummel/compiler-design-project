@@ -365,6 +365,18 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let store_alloca = [I (new_name, Store (var_ty, var_op, Id new_name))] in 
     let new_ctxt = Ctxt.add c name (var_ty, Id new_name) in
     (new_ctxt, entry_alloca :: store_alloca @var_elt)
+  | If (cond, true_stmt, false_stmt) ->
+    let cond_ty, cond_op, cond_elt = cmp_exp c cond in 
+    let true_block, true_instrs = cmp_block c rt true_stmt in
+    let false_block, false_instrs = cmp_block c rt false_stmt in
+    let true_lbl = gensym "true" in
+    let false_lbl = gensym "false" in
+    let end_lbl = gensym "end" in
+    let branch_instr = [T (Cbr (cond_op, true_lbl , false_lbl))] in
+    let new_stream = cond_elt @ branch_instr @ [L true_lbl ] @ true_instrs @ [T (Br end_lbl)]@ [L false_lbl] @ false_instrs @ [T (Br end_lbl)] @ [L end_lbl] in
+    (c, new_stream)
+
+
   | _ -> failwith "cmp_stmt not implemented"
 
 (* Compile a series of statements *)

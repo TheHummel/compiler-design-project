@@ -305,7 +305,10 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
 *)
 
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
-  failwith "cmp_exp not implemented"
+  match exp.elt with
+  | CBool b -> (I1, Const (if b then 1L else 0L), [])
+  | CInt i -> (I64, Const i, [])
+  | _ -> failwith "TODO: cmp_exp"
 
 (* Compile a statement in context c with return typ rt. Return a new context, 
    possibly extended with new local bindings, and the instruction stream
@@ -335,7 +338,19 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
  *)
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
-  failwith "cmp_stmt not implemented"
+  match stmt.elt with
+  | Ret ret -> 
+    begin match ret with
+      | None -> 
+        let term = T (Ret(Void, None)) in
+        (c, [term])
+      | Some element -> 
+        let element_ty, element_op, element_str = cmp_exp c element in
+        let strm = [T (Ret(rt, Some element_op))] @ element_str in
+        (c, strm)
+      | _ -> failwith "ret must be some or none"
+    end
+  | _ -> failwith "cmp_stmt not implemented"
 
 (* Compile a series of statements *)
 and cmp_block (c:Ctxt.t) (rt:Ll.ty) (stmts:Ast.block) : Ctxt.t * stream =

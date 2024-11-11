@@ -335,8 +335,13 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
      compiling the Id or Index expression. Instead of loading the resulting
      pointer, you just need to store to it!
 
+     type elt = 
+      | E of uid * Ll.insn      (* hoisted entry block instructions *)
+
+      type stream = elt list
  *)
 
+(* Ctxt.t =   type t = (Ast.id [string] * (Ll.ty * Ll.operand)) list *)
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   match stmt.elt with
   | Ret ret -> 
@@ -350,6 +355,16 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
         (c, strm)
       | _ -> failwith "ret must be some or none"
     end
+  | Decl d -> (* missing store instruction???? *)
+    let (name, init) = d in
+    let (var_ty, var_op, var_elt) = cmp_exp c init in  
+ 
+    let new_name = gensym name in
+    let entry_alloca = E (new_name, Alloca var_ty) in
+    (* | Store of ty * operand * operand *)
+    let store_alloca = [I (new_name, Store (var_ty, var_op, Id new_name))] in 
+    let new_ctxt = Ctxt.add c name (var_ty, Id new_name) in
+    (new_ctxt, entry_alloca :: store_alloca @var_elt)
   | _ -> failwith "cmp_stmt not implemented"
 
 (* Compile a series of statements *)

@@ -129,6 +129,34 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
   | Neg | Bitnot -> (TInt, TInt)
   | Lognot       -> (TBool, TBool)
 
+  let binop_mapping : Ast.binop -> Ll.bop = function
+  | Ast.Add -> Ll.Add
+  | Ast.Sub -> Ll.Sub
+  | Ast.Mul -> Ll.Mul
+  | Ast.Eq -> failwith "todo"
+  | Ast.Neq -> failwith "todo"
+  | Ast.Lt -> failwith "todo"
+  | Ast.Lte -> failwith "todo"
+  | Ast.Gt  -> failwith "todo"
+  | Ast.Gte -> failwith "todo"
+  | Ast.And -> Ll.And
+  | Ast.Or  -> Ll.Or
+  | Ast.IAnd  -> failwith "todo"
+  | Ast.IOr -> failwith "todo"
+  | Ast.Shl -> Ll.Shl
+  | Ast.Shr -> Ll.Lshr
+  | Ast.Sar -> Ll.Ashr
+
+let cnd_mapping : Ast.binop -> Ll.cnd = function
+  | Ast.Eq -> Ll.Eq
+  | Ast.Neq -> Ll.Ne
+  | Ast.Lt -> Ll.Slt
+  | Ast.Lte -> Ll.Sle
+  | Ast.Gt  -> Ll.Sgt
+  | Ast.Gte -> Ll.Sge
+  | Ast.IAnd  -> failwith "todo"
+  | Ast.IOr -> failwith "todo"
+
 (* Compiler Invariants
 
    The LLVM IR type of a variable (whether global or local) that stores an Oat
@@ -308,6 +336,28 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   match exp.elt with
   | CBool b -> (I1, Const (if b then 1L else 0L), [])
   | CInt i -> (I64, Const i, [])
+  | Bop (binop, exp1, exp2) ->
+    begin match binop with
+    | Add | Sub| Mul| IAnd| IOr| Shl| Shr| Sar ->
+      let type1, op1, str1 = cmp_exp c exp1 in
+      let type2, op2, str2 = cmp_exp c exp2 in
+      let ty1, ty2, ty3 = typ_of_binop binop in
+      (* if type1 = ty1 && type2 = ty2 then *)
+        let binop_ll = binop_mapping binop in
+        let uid = gensym "bop" in
+        let instr = Binop (binop_ll, cmp_ty ty3, op1, op2) in
+        (cmp_ty ty3, Id uid, [I (uid, instr)] @ str2 @ str1) (* not sure about what comes first str1 or 2 *)
+      (* else failwith "cmp_exp: type mismatch" *)
+    | Eq| Neq| Lt| Lte| Gt| Gte| And| Or ->
+      let type1, op1, str1 = cmp_exp c exp1 in
+      let type2, op2, str2 = cmp_exp c exp2 in
+      let ty1, ty2, ty3 = typ_of_binop binop in
+      let cnd_ll = cnd_mapping binop in
+      let uid = gensym "cnd" in
+      let instr = Icmp (cnd_ll, cmp_ty ty3, op1, op2) in
+      (cmp_ty ty3, Id uid, [I (uid, instr)] @ str2 @ str1)
+    | _ -> failwith "illegal binop"
+    end
   | _ -> failwith "TODO: cmp_exp"
 
 (* Compile a statement in context c with return typ rt. Return a new context, 

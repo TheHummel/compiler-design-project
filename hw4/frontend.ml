@@ -425,7 +425,34 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let branch_instr = [T (Cbr (cond_op, true_lbl , false_lbl))] in
     let new_stream = cond_elt @ branch_instr @ [L true_lbl ] @ true_instrs @ [T (Br end_lbl)]@ [L false_lbl] @ false_instrs @ [T (Br end_lbl)] @ [L end_lbl] in
     (c, new_stream)
-
+  | While (cond, while_stmts) ->
+    let cond_ty, cond_op, cond_elt = cmp_exp c cond in 
+    let while_lbl = gensym "while" in
+    let end_lbl = gensym "end" in
+    let while_block, while_instrs = cmp_block c rt while_stmts in
+    let branch_instr = [T (Cbr (cond_op, while_lbl, end_lbl))] in
+    let new_stream = cond_elt @ branch_instr @ [L while_lbl] @ while_instrs @ [T (Br while_lbl)] @ [L end_lbl] in (* chat gpt says not correct. I dont understand why not *)
+    (c, new_stream)
+    | For (vdecls, option_exp, option_stmt, for_stmt) -> (* not sure if it works *)
+      let vdecls_streams = List.map 
+      (fun vdecl -> 
+        let new_c, stmts = cmp_stmt c rt (no_loc (Decl vdecl)) in
+        stmts) 
+      vdecls 
+      in
+      let vdecls_stream = List.concat vdecls_streams in
+      let update_exp = match option_exp with 
+        | Some e -> e
+        | None -> no_loc (CBool true)
+      in
+      let update_stmt = match option_stmt with
+        | Some stmt -> [stmt]
+        | None -> []
+      in
+      let update_stmts = for_stmt @ update_stmt in
+      let new_new_c, new_stream = cmp_stmt c rt (no_loc (While (update_exp, update_stmts))) in
+      (new_new_c, vdecls_stream @ new_stream)
+  
 
   | _ -> failwith "cmp_stmt not implemented"
 

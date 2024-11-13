@@ -334,6 +334,9 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
 
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   match exp.elt with
+  | CNull null -> 
+    let ty = cmp_ty (TRef null) in
+    ty, Null, []
   | CBool b -> (I1, Const (if b then 1L else 0L), [])
   | CInt i -> (I64, Const i, [])
   | Bop (binop, exp1, exp2) ->

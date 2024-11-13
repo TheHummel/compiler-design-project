@@ -358,6 +358,17 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let load_instr = Load (elem_ty, Id ptr_uid) in
     let strm = array_str @ index_str @ [I (ptr_uid, gep_instr); I (elem_uid, load_instr)] in
     (elem_ty, Id elem_uid, strm)
+  | CStr s ->
+    let gid = gensym "str" in
+    let uid = gensym "uidstr" in
+    let len = String.length s + 1 in
+    let ref_ty = cmp_ty (TRef RString) in
+    let ty = Array (len, I8) in
+    let str_gdecl = (ty, GString s) in
+    let bitcast_decl = [I (uid, Bitcast (Ptr ty, Gid gid, Ptr I8))] in
+    let strm = [G (gid, str_gdecl)] @ bitcast_decl in
+    (ref_ty, Id uid, strm)
+
   | NewArr (array, size) ->
     let size_ty, size_op, size_str = cmp_exp c size in
     let ty, op, strm = oat_alloc_array array size_op in
@@ -670,11 +681,11 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   | CInt i -> (I64, GInt i), []
   | CStr s -> 
     let gid = gensym "str" in
-      let len = String.length s + 1 in
-      let ty = Array (len, I8) in
-      let str_gdecl = (ty, GString s) in
-      let ptr_gdecl = (Ptr I8, GBitcast (Ptr ty, GGid gid, Ptr I8)) in
-      ptr_gdecl, [(gid, str_gdecl)]
+    let len = String.length s + 1 in
+    let ty = Array (len, I8) in
+    let str_gdecl = (ty, GString s) in
+    let ptr_gdecl = (Ptr I8, GBitcast (Ptr ty, GGid gid, Ptr I8)) in
+    ptr_gdecl, [(gid, str_gdecl)]
   | _ -> failwith "cmp_gexp not implemented"
 
 (* Oat internals function context ------------------------------------------- *)

@@ -463,6 +463,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let store_alloca = [I (new_name, Store (var_ty, var_op, Id new_name))] in 
     let new_ctxt = Ctxt.add c name (var_ty, Id new_name) in
     (new_ctxt, entry_alloca :: store_alloca @var_elt)
+    (* (new_ctxt, var_elt @ [entry_alloca] @ store_alloca) *)
   | If (cond, true_stmt, false_stmt) ->
     let cond_ty, cond_op, cond_elt = cmp_exp c cond in 
     let true_block, true_instrs = cmp_block c rt true_stmt in
@@ -473,13 +474,15 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let branch_instr = [T (Cbr (cond_op, true_lbl , false_lbl))] in
     let new_stream = cond_elt @ branch_instr @ [L true_lbl ] @ true_instrs @ [T (Br end_lbl)]@ [L false_lbl] @ false_instrs @ [T (Br end_lbl)] @ [L end_lbl] in
     (c, new_stream)
+    (* Todo: check if context needs to be updated with returned cotext from cmp_block *)
   | While (cond, while_stmts) ->
     let cond_ty, cond_op, cond_elt = cmp_exp c cond in 
     let while_lbl = gensym "while" in
     let end_lbl = gensym "end" in
+    let cond_lbl = gensym "cond" in
     let while_block, while_instrs = cmp_block c rt while_stmts in
     let branch_instr = [T (Cbr (cond_op, while_lbl, end_lbl))] in
-    let new_stream = cond_elt @ branch_instr @ [L while_lbl] @ while_instrs @ [T (Br while_lbl)] @ [L end_lbl] in (* chat gpt says not correct. I dont understand why not *)
+    let new_stream = (* [T (Br cond_lbl)] @ *) [L cond_lbl] @ cond_elt @  branch_instr @ [L while_lbl] @ while_instrs @ [T (Br cond_lbl)] @ [L end_lbl] in
     (c, new_stream)
   | For (vdecls, option_exp, option_stmt, for_stmt) -> (* not sure if it works *)
     let vdecls_streams = List.map (fun vdecl -> 

@@ -406,6 +406,33 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       (I64, Id uid, [I (uid, instr)] @ str1)
     | _ -> failwith "illegal unop"
     end
+
+  | Call (exp1, exp2) ->
+    let fname = match exp1.elt with
+      | Id id -> id
+      | _ -> failwith "invalid function name"
+    in
+    let f_ptr, f_op = Ctxt.lookup_function fname c in
+
+    begin match f_ptr with
+    | Ptr (Fun (args, ret_ty)) ->
+
+      let arg_results = List.map (cmp_exp c) exp2 in
+      let arg_ty_list, arg_op_list, arg_str_list =
+        List.fold_right (fun (ty, op, str) (tys, ops, strs) ->
+          (ty :: tys, op :: ops, str @ strs)
+        ) arg_results ([], [], [])
+      in
+      let args_list = List.combine arg_ty_list arg_op_list in
+
+      let call_uid = gensym "call" in
+
+      let call_instr = Ll.Call (ret_ty, f_op, args_list) in
+      
+      (ret_ty, Id call_uid, [I (call_uid, call_instr)] @ arg_str_list)
+
+    | _ -> failwith "invalid function type"
+    end
   | _ -> failwith "TODO: cmp_exp"
 
 (* Compile a statement in context c with return typ rt. Return a new context, 
@@ -518,7 +545,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     in
     let f_ptr, f_op = Ctxt.lookup_function fname c in
 
-    match f_ptr with
+    begin match f_ptr with
     | Ptr (Fun (args, ret_ty)) ->
 
       let arg_results = List.map (cmp_exp c) exp2 in
@@ -533,7 +560,8 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
 
       (c, [I (call_uid, Call (ret_ty, f_op, args_list))] @ arg_str_list)
 
-
+    | _ -> failwith "invalid function type"
+    end
     
   | _ -> failwith "cmp_stmt not implemented"
 

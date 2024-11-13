@@ -339,6 +339,11 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     ty, Null, []
   | CBool b -> (I1, Const (if b then 1L else 0L), [])
   | CInt i -> (I64, Const i, [])
+  | Id id -> 
+    let uid = gensym "id" in
+    let ty, op = Ctxt.lookup id c in
+    let strm = [I (uid, Load (Ptr ty, op))] in
+    (ty, Id uid, strm)
   | Bop (binop, exp1, exp2) ->
     begin match binop with
     | Add | Sub| Mul| IAnd| IOr| Shl| Shr| Sar ->

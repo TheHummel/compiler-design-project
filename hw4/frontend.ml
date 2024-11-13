@@ -502,7 +502,30 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let new_new_c, new_stream = cmp_stmt c rt (no_loc (While (update_exp, update_stmts))) in
     (new_new_c, vdecls_stream @ new_stream)
   
-  | SCall (fname, args) -> failwith "Janos too stupid"
+  | SCall (exp1, exp2) -> 
+    let fname = match exp1.elt with
+      | Id id -> id
+      | _ -> failwith "invalid function name"
+    in
+    let f_ptr, f_op = Ctxt.lookup_function fname c in
+
+    match f_ptr with
+    | Ptr (Fun (args, ret_ty)) ->
+
+      let arg_results = List.map (cmp_exp c) exp2 in
+      let arg_ty_list, arg_op_list, arg_str_list =
+        List.fold_right (fun (ty, op, str) (tys, ops, strs) ->
+          (ty :: tys, op :: ops, str @ strs)
+        ) arg_results ([], [], [])
+      in
+      let args_list = List.combine arg_ty_list arg_op_list in
+
+      let call_uid = gensym "call" in
+
+      (c, [I (call_uid, Call (ret_ty, f_op, args_list))] @ arg_str_list)
+
+
+    
   | _ -> failwith "cmp_stmt not implemented"
 
 (* Compile a series of statements *)

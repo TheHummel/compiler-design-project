@@ -501,8 +501,20 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       let (exp2_ty, exp2_ptr, exp2_instr) = cmp_exp c exp2 in
       let store_inst = I (gensym "store", Store(exp2_ty, exp2_ptr, var_ptr)) in
       (c,  exp2_instr @ [store_inst] )
-
-    | Index (arr_exp, i_exp) ->  failwith "array index assignment not implemented penis"
+    | Index (arr, ind) -> 
+      let arr_ty, arr_op, arr_str = cmp_exp c arr in
+      let ind_ty, ind_op, ind_str = cmp_exp c ind in
+      let (exp2_ty, exp2_ptr, exp2_instr) = cmp_exp c exp2 in
+      begin match arr_ty with
+      | Ptr (Struct [_; Array(_, elem_ty)]) ->
+        let gep_id = gensym "gep" in
+        let store_id = gensym "store" in
+        let gep_instr = I (gep_id, Gep (arr_ty, arr_op, [Const 0L; Const 1L; ind_op])) in
+        let store_instr = I (store_id, Store (exp2_ty, exp2_ptr, Id gep_id)) in
+        (c, arr_str @ ind_str @ [gep_instr] @ exp2_instr @ [store_instr])
+      
+      | _ -> failwith "Expected array type"
+      end
     end 
   | Ret ret -> 
     begin match ret with

@@ -344,6 +344,24 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let ty, op = Ctxt.lookup id c in
     let strm = [I (uid, Load (Ptr ty, op))] in
     (ty, Id uid, strm)
+  | Index (array, index) ->
+    let array_ty, array_op, array_str = cmp_exp c array in
+    let index_ty, index_op, index_str = cmp_exp c index in
+    let elem_ty = match array_ty with
+      | Ptr t -> t
+      | _ -> failwith "array type must be pointer"
+    in
+    let ptr_uid = gensym "elem_ptr" in
+    let elem_uid = gensym "elem_val" in
+    let gep_instr = Gep (elem_ty, array_op, [index_op]) in
+
+    let load_instr = Load (elem_ty, Id ptr_uid) in
+    let strm = array_str @ index_str @ [I (ptr_uid, gep_instr); I (elem_uid, load_instr)] in
+    (elem_ty, Id elem_uid, strm)
+  | NewArr (array, size) ->
+    let size_ty, size_op, size_str = cmp_exp c size in
+    let ty, op, strm = oat_alloc_array array size_op in
+    ty, op, size_str @ strm
   | Bop (binop, exp1, exp2) ->
     begin match binop with
     | Add | Sub| Mul| IAnd| IOr| Shl| Shr| Sar ->

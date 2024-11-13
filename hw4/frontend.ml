@@ -442,6 +442,15 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 (* Ctxt.t =   type t = (Ast.id [string] * (Ll.ty * Ll.operand)) list *)
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   match stmt.elt with
+  | Assn (exp1, exp2) -> 
+    begin match exp1.elt with
+    | Id id -> let var_ty, var_ptr = Ctxt.lookup id c in 
+      let (exp2_ty, exp2_ptr, exp2_instr) = cmp_exp c exp2 in
+      let store_inst = I (gensym "store", Store(exp2_ty, exp2_ptr, var_ptr)) in
+      (c,  exp2_instr @ [store_inst] )
+
+    | Index (arr_exp, i_exp) ->  failwith "array index assignment not implemented penis"
+    end 
   | Ret ret -> 
     begin match ret with
       | None -> 

@@ -373,6 +373,21 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let size_ty, size_op, size_str = cmp_exp c size in
     let ty, op, strm = oat_alloc_array array size_op in
     ty, op, size_str @ strm
+  | CArr (array, list) ->
+    let n = List.length list in
+    let array_ty, array_op, array_str = oat_alloc_array array (Const (Int64.of_int n)) in
+    let cmp_list = List.map (fun x -> cmp_exp c x) list in
+    let list_str = List.flatten (List.map (fun (_, _, x) -> x) cmp_list) in
+    let stream = List.fold_left (fun acc (ty, op, i) ->
+      let gep_id = gensym "gep" in
+      let gep_instr = Gep (array_ty, array_op, [Const 0L; Const 1L; Const (Int64.of_int i)]) in
+      let store_id = gensym "store" in
+      let store_inst = Store (ty, op, Id gep_id) in
+      lift [gep_id, gep_instr; store_id, store_inst] @ acc
+    ) [] (List.mapi (fun i (ty, op, _) -> (ty, op, i)) cmp_list) in
+
+    (array_ty, array_op, stream @ array_str @ list_str)
+
   | Bop (binop, exp1, exp2) ->
     begin match binop with
     | Add | Sub| Mul| IAnd| IOr| Shl| Shr| Sar ->

@@ -508,7 +508,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
   List.fold_left (fun c -> function
     | Ast.Gvdecl { elt={ name; init } } ->
       let gt = match init.elt with
-        | CNull _ -> failwith "TODO: implement null"
+        | CNull null -> TRef null
         | CInt _ -> TInt
         | CBool _ -> TBool
         | CStr _ -> TRef RString

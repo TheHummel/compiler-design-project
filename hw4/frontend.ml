@@ -358,6 +358,28 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       (cmp_ty ty3, Id uid, [I (uid, instr)] @ str2 @ str1)
     | _ -> failwith "illegal binop"
     end
+  | Uop (unop, exp) ->
+    begin match unop with
+    | Neg ->
+      let type1, op1, str1 = cmp_exp c exp in
+      let ty1, ty2 = typ_of_unop unop in
+      let uid = gensym "uop" in
+      let instr = Binop (Sub, I64, Const 0L, op1) in
+      (I64, Id uid, [I (uid, instr)] @ str1)
+    | Lognot ->
+      let type1, op1, str1 = cmp_exp c exp in
+      let ty1, ty2 = typ_of_unop unop in
+      let uid = gensym "uop" in
+      let instr = Icmp (Eq, I1, op1, Const 0L) in
+      (I1, Id uid, [I (uid, instr)] @ str1)
+    | Bitnot ->
+      let type1, op1, str1 = cmp_exp c exp in
+      let ty1, ty2 = typ_of_unop unop in
+      let uid = gensym "uop" in
+      let instr = Binop (Xor, I64, op1, Const (-1L)) in
+      (I64, Id uid, [I (uid, instr)] @ str1)
+    | _ -> failwith "illegal unop"
+    end
   | _ -> failwith "TODO: cmp_exp"
 
 (* Compile a statement in context c with return typ rt. Return a new context, 

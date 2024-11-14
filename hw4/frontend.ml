@@ -372,7 +372,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | NewArr (array, size) ->
     let size_ty, size_op, size_str = cmp_exp c size in
     let ty, op, strm = oat_alloc_array array size_op in
-    ty, op, size_str @ strm
+    ty, op, strm @ size_str
   | CArr (array, list) ->
     let n = List.length list in
     let array_ty, array_op, array_str = oat_alloc_array array (Const (Int64.of_int n)) in
@@ -408,6 +408,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       let uid = gensym "cnd" in
       let instr = Icmp (cnd_ll, cmp_ty ty3, op1, op2) in
       (cmp_ty ty3, Id uid, [I (uid, instr)] @ str2 @ str1)
+      (* TODO: handle IAnd, IOr *)
     | _ -> failwith "illegal binop"
     end
   | Uop (unop, exp) ->
@@ -500,7 +501,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     | Id id -> let var_ty, var_ptr = Ctxt.lookup id c in 
       let (exp2_ty, exp2_ptr, exp2_instr) = cmp_exp c exp2 in
       let store_inst = I (gensym "store", Store(exp2_ty, exp2_ptr, var_ptr)) in
-      (c,  exp2_instr @ [store_inst] )
+      (c, [store_inst] @ exp2_instr  )
     | Index (arr, ind) -> 
       let arr_ty, arr_op, arr_str = cmp_exp c arr in
       let ind_ty, ind_op, ind_str = cmp_exp c ind in
@@ -532,11 +533,11 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let (var_ty, var_op, var_elt) = cmp_exp c init in  
  
     let new_name = gensym name in
-    let entry_alloca = E (new_name, Alloca var_ty) in
+    let entry_alloca = [E (new_name, Alloca var_ty) ]in
     (* | Store of ty * operand * operand *)
     let store_alloca = [I (new_name, Store (var_ty, var_op, Id new_name))] in 
     let new_ctxt = Ctxt.add c name (var_ty, Id new_name) in
-    (new_ctxt, entry_alloca :: store_alloca @var_elt)
+    (new_ctxt, store_alloca @  entry_alloca@var_elt)
     (* (new_ctxt, var_elt @ [entry_alloca] @ store_alloca) *)
   | If (cond, true_stmt, false_stmt) ->
     let cond_ty, cond_op, cond_elt = cmp_exp c cond in 

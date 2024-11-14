@@ -133,16 +133,10 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
   | Ast.Add -> Ll.Add
   | Ast.Sub -> Ll.Sub
   | Ast.Mul -> Ll.Mul
-  | Ast.Eq -> failwith "todo"
-  | Ast.Neq -> failwith "todo"
-  | Ast.Lt -> failwith "todo"
-  | Ast.Lte -> failwith "todo"
-  | Ast.Gt  -> failwith "todo"
-  | Ast.Gte -> failwith "todo"
   | Ast.And -> Ll.And
   | Ast.Or  -> Ll.Or
-  | Ast.IAnd  -> failwith "todo"
-  | Ast.IOr -> failwith "todo"
+  | Ast.IAnd  -> Ll.And
+  | Ast.IOr -> Ll.Or
   | Ast.Shl -> Ll.Shl
   | Ast.Shr -> Ll.Lshr
   | Ast.Sar -> Ll.Ashr

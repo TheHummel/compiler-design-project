@@ -148,8 +148,6 @@ let cnd_mapping : Ast.binop -> Ll.cnd = function
   | Ast.Lte -> Ll.Sle
   | Ast.Gt  -> Ll.Sgt
   | Ast.Gte -> Ll.Sge
-  | Ast.IAnd  -> failwith "todo"
-  | Ast.IOr -> failwith "todo"
 
 (* Compiler Invariants
 

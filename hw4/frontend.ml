@@ -547,7 +547,8 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let false_lbl = gensym "false" in
     let end_lbl = gensym "end" in
     let branch_instr = [T (Cbr (cond_op, true_lbl , false_lbl))] in
-    let new_stream = cond_elt @ branch_instr @ [L true_lbl ] @ true_instrs @ [T (Br end_lbl)]@ [L false_lbl] @ false_instrs @ [T (Br end_lbl)] @ [L end_lbl] in
+    let new_stream = [L end_lbl] @ [T (Br end_lbl)] @ false_instrs  @ [L false_lbl] @ [T (Br end_lbl)] @ true_instrs @ [L true_lbl] @ branch_instr @ cond_elt
+    in
     (c, new_stream)
     (* Todo: check if context needs to be updated with returned cotext from cmp_block *)
   | While (cond, while_stmts) ->
@@ -557,7 +558,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let cond_lbl = gensym "cond" in
     let while_block, while_instrs = cmp_block c rt while_stmts in
     let branch_instr = [T (Cbr (cond_op, while_lbl, end_lbl))] in
-    let new_stream = (* [T (Br cond_lbl)] @ *) [L cond_lbl] @ cond_elt @  branch_instr @ [L while_lbl] @ while_instrs @ [T (Br cond_lbl)] @ [L end_lbl] in
+    let new_stream = (* [T (Br cond_lbl)] @ *) [L end_lbl] @ [T (Br cond_lbl)] @ [L while_lbl] @ while_instrs @ branch_instr @ cond_elt @ [L cond_lbl] in
     (c, new_stream)
   | For (vdecls, option_exp, option_stmt, for_stmt) -> (* not sure if it works *)
     let vdecls_streams = List.map (fun vdecl -> 
@@ -575,7 +576,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     (* let c, for_instr = cmp_block c rt vdecls_streams in  WTF IS HAPPENING*)
     let update_stmts = for_stmt @ update_stmt in
     let new_new_c, new_stream = cmp_stmt c rt (no_loc (While (update_exp, update_stmts))) in
-    (new_new_c, vdecls_stream @ new_stream)
+    (new_new_c, new_stream @ vdecls_stream)
   
   | SCall (exp1, exp2) -> 
     let fname = match exp1.elt with
@@ -679,7 +680,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
 
   let body_ctxt, body_stream = cmp_block arg_bindings ret_ty body in
 
-  let cfg, gdecls = cfg_of_stream (entry_allocas @ body_stream) in
+  let cfg, gdecls = cfg_of_stream (body_stream @ entry_allocas) in
 
   let fdecl = {
     f_ty = (arg_types, ret_ty);

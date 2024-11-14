@@ -348,15 +348,15 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let array_ty, array_op, array_str = cmp_exp c array in
     let index_ty, index_op, index_str = cmp_exp c index in
     let elem_ty = match array_ty with
-      | Ptr t -> t
+      | Ptr (Struct [_; Array (_, t)]) -> t
       | _ -> failwith "array type must be pointer"
     in
     let ptr_uid = gensym "elem_ptr" in
     let elem_uid = gensym "elem_val" in
-    let gep_instr = Gep (elem_ty, array_op, [index_op]) in
+    let gep_instr = Gep (array_ty, array_op, [Const 0L; Const 1L; index_op]) in
 
-    let load_instr = Load (elem_ty, Id ptr_uid) in
-    let strm = array_str @ index_str @ [I (ptr_uid, gep_instr); I (elem_uid, load_instr)] in
+    let load_instr = Load (Ptr(elem_ty), Id ptr_uid) in
+    let strm =  [I (elem_uid, load_instr); I (ptr_uid, gep_instr)] @ index_str @ array_str  in
     (elem_ty, Id elem_uid, strm)
   | CStr s ->
     let gid = gensym "str" in

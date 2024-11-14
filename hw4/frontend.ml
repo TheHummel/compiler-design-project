@@ -508,11 +508,11 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       let (exp2_ty, exp2_ptr, exp2_instr) = cmp_exp c exp2 in
       begin match arr_ty with
       | Ptr (Struct [_; Array(_, elem_ty)]) ->
-        let gep_id = gensym "gep" in
+        let assn_id = gensym "assn" in
         let store_id = gensym "store" in
-        let gep_instr = I (gep_id, Gep (arr_ty, arr_op, [Const 0L; Const 1L; ind_op])) in
-        let store_instr = I (store_id, Store (exp2_ty, exp2_ptr, Id gep_id)) in
-        (c, arr_str @ ind_str @ [gep_instr] @ exp2_instr @ [store_instr])
+        let gep_instr = I (assn_id, Gep (arr_ty, arr_op, [Const 0L; Const 1L; ind_op])) in
+        let store_instr = I (assn_id, Store (exp2_ty, exp2_ptr, Id assn_id)) in
+        (c, [store_instr] @ [gep_instr] @ ind_str @ arr_str @ exp2_instr )
       
       | _ -> failwith "Expected array type"
       end

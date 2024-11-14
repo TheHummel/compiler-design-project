@@ -384,25 +384,22 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
   | Bop (binop, exp1, exp2) ->
     begin match binop with
-    | Add | Sub| Mul| IAnd| IOr| Shl| Shr| Sar ->
+    | Add | Sub| Mul| IAnd| IOr| Shl| Shr| Sar| And| Or ->
       let type1, op1, str1 = cmp_exp c exp1 in
       let type2, op2, str2 = cmp_exp c exp2 in
       let ty1, ty2, ty3 = typ_of_binop binop in
-      (* if type1 = ty1 && type2 = ty2 then *)
-        let binop_ll = binop_mapping binop in
-        let uid = gensym "bop" in
-        let instr = Binop (binop_ll, cmp_ty ty3, op1, op2) in
-        (cmp_ty ty3, Id uid, [I (uid, instr)] @ str2 @ str1) (* not sure about what comes first str1 or 2 *)
-      (* else failwith "cmp_exp: type mismatch" *)
-    | Eq| Neq| Lt| Lte| Gt| Gte| And| Or ->
+      let binop_ll = binop_mapping binop in
+      let uid = gensym "bop" in
+      let instr = Binop (binop_ll, cmp_ty ty1, op1, op2) in
+      (cmp_ty ty3, Id uid, [I (uid, instr)] @ str2 @ str1) (* not sure about what comes first str1 or 2 *)
+    | Eq| Neq| Lt| Lte| Gt| Gte ->
       let type1, op1, str1 = cmp_exp c exp1 in
       let type2, op2, str2 = cmp_exp c exp2 in
       let ty1, ty2, ty3 = typ_of_binop binop in
       let cnd_ll = cnd_mapping binop in
       let uid = gensym "cnd" in
-      let instr = Icmp (cnd_ll, cmp_ty ty3, op1, op2) in
+      let instr = Icmp (cnd_ll, cmp_ty ty1, op1, op2) in
       (cmp_ty ty3, Id uid, [I (uid, instr)] @ str2 @ str1)
-      (* TODO: handle IAnd, IOr *)
     | _ -> failwith "illegal binop"
     end
   | Uop (unop, exp) ->

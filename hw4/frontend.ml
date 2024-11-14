@@ -487,7 +487,6 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       type stream = elt list
  *)
 
-(* Ctxt.t =   type t = (Ast.id [string] * (Ll.ty * Ll.operand)) list *)
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   match stmt.elt with
   | Assn (exp1, exp2) -> 
@@ -522,17 +521,15 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
         (c, strm)
       | _ -> failwith "ret must be some or none"
     end
-  | Decl d -> (* missing store instruction???? *)
+  | Decl d -> 
     let (name, init) = d in
     let (var_ty, var_op, var_elt) = cmp_exp c init in  
  
     let new_name = gensym name in
     let entry_alloca = [E (new_name, Alloca var_ty) ]in
-    (* | Store of ty * operand * operand *)
     let store_alloca = [I (new_name, Store (var_ty, var_op, Id new_name))] in 
     let new_ctxt = Ctxt.add c name (var_ty, Id new_name) in
     (new_ctxt, store_alloca @  entry_alloca@var_elt)
-    (* (new_ctxt, var_elt @ [entry_alloca] @ store_alloca) *)
   | If (cond, true_stmt, false_stmt) ->
     let cond_ty, cond_op, cond_elt = cmp_exp c cond in 
     let true_block, true_instrs = cmp_block c rt true_stmt in
@@ -552,13 +549,13 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let cond_lbl = gensym "cond" in
     let while_block, while_instrs = cmp_block c rt while_stmts in
     let branch_instr = [T (Cbr (cond_op, while_lbl, end_lbl))] in
-    let new_stream = (* [T (Br cond_lbl)] @ *) [L end_lbl] @ [T (Br cond_lbl)] @ [L while_lbl] @ while_instrs @ branch_instr @ cond_elt @ [L cond_lbl] in
+    let new_stream = (* [T (Br cond_lbl)] @ *) [L end_lbl] @ [T (Br cond_lbl)] @ while_instrs @ [L while_lbl] @ branch_instr @ cond_elt @ [L cond_lbl] @ [T (Br cond_lbl)] in
     (c, new_stream)
   | For (vdecls, option_exp, option_stmt, for_stmt) -> (* not sure if it works *)
     let vdecls_streams = List.map (fun vdecl -> 
-      let new_c, stmts = cmp_stmt c rt (no_loc (Decl vdecl)) in
-      stmts) vdecls in
-    let vdecls_stream = List.concat vdecls_streams in
+      no_loc (Decl vdecl)
+    ) vdecls in
+    let c, vdecls_stream = cmp_block c rt vdecls_streams in
     let update_exp = match option_exp with 
       | Some e -> e
       | None -> no_loc (CBool true)
@@ -567,7 +564,6 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | Some stmt -> [stmt]
       | None -> []
     in
-    (* let c, for_instr = cmp_block c rt vdecls_streams in  WTF IS HAPPENING*)
     let update_stmts = for_stmt @ update_stmt in
     let new_new_c, new_stream = cmp_stmt c rt (no_loc (While (update_exp, update_stmts))) in
     (new_new_c, new_stream @ vdecls_stream)

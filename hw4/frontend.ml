@@ -639,7 +639,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
         | CInt _ -> TInt
         | CBool _ -> TBool
         | CStr _ -> TRef RString
-        | CArr (t, _) -> failwith " arr not implemented"
+        | CArr (t, _) -> failwith " arr not implemented. I am responsible for 8 tests to fail"
         | _ -> failwith "cmp_global_ctxt: invalid global initializer"
       in
       Ctxt.add c name (cmp_ty gt, Gid name)

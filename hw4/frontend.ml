@@ -626,7 +626,8 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
         | CInt _ -> TInt
         | CBool _ -> TBool
         | CStr _ -> TRef RString
-        | CArr (t, _) -> failwith " arr not implemented. I am responsible for 8 tests to fail"
+        | CArr (t, _) -> 
+          TRef (RArray t)
         | _ -> failwith "cmp_global_ctxt: invalid global initializer"
       in
       Ctxt.add c name (cmp_ty gt, Gid name)
@@ -700,6 +701,16 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
     let str_gdecl = (ty, GString s) in
     let ptr_gdecl = (Ptr I8, GBitcast (Ptr ty, GGid gid, Ptr I8)) in
     ptr_gdecl, [(gid, str_gdecl)]
+    | CArr (ty, list) ->
+      let n = List.length list in
+      let ref_ty = cmp_ty (TRef (RArray ty)) in
+      let gid = gensym "carr" in
+      let array_ty = Array(n, cmp_ty ty) in
+      let cmp_list = List.map (fun x -> cmp_gexp c x) list in
+      let ginit = List.map fst cmp_list in
+      let strm_gdecls = List.flatten (List.map snd cmp_list) in
+      let bitcast = GBitcast (Ptr (Struct [I64; array_ty]), GGid gid, ref_ty) in
+      (ref_ty, bitcast), [gid, (Struct [I64; array_ty], GStruct [I64, GInt (Int64.of_int (n)); array_ty, GArray ginit])] @ strm_gdecls
   | _ -> failwith "cmp_gexp not implemented"
 
 (* Oat internals function context ------------------------------------------- *)

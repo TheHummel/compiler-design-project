@@ -6,8 +6,12 @@
 
 _build/
 
+*/output
+
 main.native
 
 exec
 
 commands.txt
+
+team.txt

@@ -47,11 +47,43 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
       (Don't forget about OCaml's 'and' keyword.)
 *)
 let rec subtype (c : Tctxt.t) (t1 : Ast.ty) (t2 : Ast.ty) : bool =
-  failwith "todo: subtype"
+  let { locals; globals; structs } = c in
+  match t1, t2 with
+  | TInt, TInt -> true
+  | TBool, TBool -> true
+  | TRef ref1, TRef ref2 -> subtype_ref c ref1 ref2
+  (* | TNullRef ref1, TRef ref2 -> subtype_ref c ref1 ref2 *)
+  | TRef ref1, TNullRef ref2 -> subtype_ref c ref1 ref2
+  | TNullRef ref1, TNullRef ref2 -> subtype_ref c ref1 ref2
+  | _ -> false
+
+
 
 (* Decides whether H |-r ref1 <: ref2 *)
 and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
-  failwith "todo: subtype_ref"
+  let { locals; globals; structs } = c in
+  match t1, t2 with
+  | RString, RString -> true
+  | RStruct s1, RStruct s2 -> s1 = s2
+  | RArray t1, RArray t2 -> subtype c t1 t2
+  | RFun (args1, ret1), RFun (args2, ret2) ->
+    let l1 = List.length args1 in
+    let l2 = List.length args2 in
+    let rec arg_subtype c args1 args2 = 
+      match args1, args2 with
+      | [], [] -> true
+      | a1::args1, a2::args2 -> subtype c a1 a2 && arg_subtype c args1 args2
+      | _ -> false
+    in
+    begin match ret1, ret2 with
+    | RetVoid, RetVoid -> l1 = l2 &&
+      arg_subtype c args1 args2
+    | RetVal ret1, RetVal ret2 ->
+      l1 = l2 &&
+      arg_subtype c args1 args2 &&
+      subtype c ret1 ret2
+    end
+  | _ -> false
 
 
 (* well-formed types -------------------------------------------------------- *)

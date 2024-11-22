@@ -48,6 +48,7 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
 *)
 let rec subtype (c : Tctxt.t) (t1 : Ast.ty) (t2 : Ast.ty) : bool =
   let { locals; globals; structs } = c in
+  (* todo: check what c needs to be used for *)
   match t1, t2 with
   | TInt, TInt -> true
   | TBool, TBool -> true
@@ -102,7 +103,18 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
     - tc contains the structure definition context
  *)
 let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
-  failwith "todo: implement typecheck_ty"
+  match t with
+  | TBool | TInt -> ()
+  | TRef reft -> typecheck_refty l tc reft
+  | TNullRef reft -> typecheck_refty l tc reft
+
+
+and typecheck_refty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
+  match t with
+  | RString -> ()
+  | RArray t -> typecheck_ty l tc t
+  | _ -> failwith "todo: struct and fun"
+
 
 (* typechecking expressions ------------------------------------------------- *)
 (* Typechecks an expression in the typing context c, returns the type of the

@@ -107,13 +107,23 @@ let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
   | TBool | TInt -> ()
   | TRef reft -> typecheck_refty l tc reft
   | TNullRef reft -> typecheck_refty l tc reft
+  | _ -> failwith "illegal type"
 
 
 and typecheck_refty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
   match t with
   | RString -> ()
   | RArray t -> typecheck_ty l tc t
-  | _ -> failwith "todo: struct and fun"
+  | RStruct id ->
+    let strct = lookup_struct id tc in
+    List.iter (fun f -> typecheck_ty l tc f.ftyp) strct
+  | RFun (args, retty) ->
+    List.iter (typecheck_ty l tc) args;
+    match retty with
+    | RetVoid -> ()
+    | RetVal t -> typecheck_ty l tc t
+
+  | _ -> failwith "illegal reftype"
 
 
 (* typechecking expressions ------------------------------------------------- *)

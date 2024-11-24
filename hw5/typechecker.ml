@@ -108,6 +108,7 @@ let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
   | TRef reft -> typecheck_refty l tc reft
   | TNullRef reft -> typecheck_refty l tc reft
   | _ -> failwith "illegal type"
+  (* todo: use type_error *)
 
 
 and typecheck_refty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
@@ -152,7 +153,38 @@ and typecheck_refty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
 
 *)
 let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
-  failwith "todo: implement typecheck_exp"
+  let exp = e.elt in
+  begin match exp with
+  | CNull rty -> 
+    let tref = TRef rty in
+    if typecheck_ty e c tref = () then
+      TNullRef rty
+    else
+      type_error e "illegal CNull"
+  | CBool b -> TBool
+  | CInt i -> TInt
+  | CStr str -> TRef RString
+  | Id id -> 
+    let id_ty = Tctxt.lookup_local_option id c in
+    begin match id_ty with
+    | Some ty -> ty
+    | None -> 
+      let id_ty_global = Tctxt.lookup_global_option id c in
+      begin match id_ty with
+      | Some ty -> ty
+      | None -> type_error e "illegal Id"
+      end
+    end
+  | CArr (ty, exp_h::exp_tl) -> failwith "todo"
+  | NewArr (ty, exp_node, id, exp_node2) -> failwith "todo"
+  | Index (exp_node, exp_node2) -> failwith "todo"
+  | Length exp_node -> failwith "todo"
+  | CStruct (id, h::tl) -> failwith "todo"
+  | Proj (exp_node, id) -> failwith "todo"
+  | Call (exp_node, h::tl) -> failwith "todo"
+  | Bop (binop, exp_node, exp_node2) -> failwith "todo"
+  | Uop (unop, exp_node) -> failwith "todo"
+  end
 
 (* statements --------------------------------------------------------------- *)
 

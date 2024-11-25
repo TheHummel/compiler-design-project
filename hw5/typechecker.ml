@@ -196,6 +196,17 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   | Uop (unop, exp_node) -> failwith "todo"
   end
 
+
+let typecheck_function_ty (tc: Tctxt.t) (fdecl_node: Ast.fdecl Ast.node) : Ast.ty =
+  let {elt=fdecl} = fdecl_node in
+  let {frtyp; fname; args; body} = fdecl in
+  let arg_types = List.map (fun (ty, _) -> ty) args in
+  let fun_exp = TRef (RFun (arg_types, frtyp)) in
+  if typecheck_ty fdecl_node tc fun_exp = () then
+    fun_exp
+  else
+    type_error fdecl_node "illegal function type"
+
 (* statements --------------------------------------------------------------- *)
 
 (* Typecheck a statement 
@@ -307,10 +318,21 @@ let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
   !context
 
 let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
-  failwith "todo: create_function_ctxt"
+  let context = ref tc in
+  List.iter(fun decl ->
+    match decl with
+    | Gfdecl fdecl_node ->
+      let {elt=fdecl} = fdecl_node in
+      let {frtyp; fname; args; body} = fdecl in
+      let fty = typecheck_function_ty tc fdecl_node in
+      context := Tctxt.add_global !context fname fty
+
+    | _ -> ()
+  ) p;
+  !context
 
 let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
-  failwith "todo: create_function_ctxt"
+  failwith "todo: create_global_ctxt"
 
 
 (* This function implements the |- prog and the H ; G |- prog 

@@ -176,7 +176,17 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
       end
     end
   | CArr (ty, exp_h::exp_tl) -> failwith "todo"
-  | NewArr (ty, exp_node, id, exp_node2) -> failwith "todo"
+  | NewArr (ty, exp_node1, id, exp_node2) -> 
+    let exp1 = exp_node1.elt in
+    let exp2 = exp_node2.elt in
+    let type_check = typecheck_ty exp_node1 c ty in
+    let id_option = lookup_local_option id c in
+    let local_check = 
+      match id_option with
+      | Some _ -> false
+      | None -> true
+    in
+    failwith "todo newarr"
   | Index (exp_node, exp_node2) -> failwith "todo"
   | Length exp_node -> failwith "todo"
   | CStruct (id, h::tl) -> failwith "todo"

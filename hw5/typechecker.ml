@@ -255,6 +255,11 @@ let rec check_dups fs =
   | [] -> false
   | h :: t -> (List.exists (fun x -> x.fieldName = h.fieldName) t) || check_dups t
 
+let rec check_dups_function args =
+  match args with
+  | [] -> false
+  | h::tl -> (List.exists (fun x -> x = h) tl) || check_dups_function tl
+
 let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
   if check_dups fs
   then type_error l ("Repeated fields in " ^ id) 
@@ -267,8 +272,18 @@ let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
     - typechecks the body of the function (passing in the expected return type
     - checks that the function actually returns
 *)
+let typecheck_block (tc : Tctxt.t) (b : Ast.block) (to_ret:ret_ty) : bool =
+  failwith "todo: typecheck_block"
+
 let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
-  failwith "todo: typecheck_fdecl"
+  let {frtyp; fname; args; body} = f in
+  if check_dups_function args then type_error l ("duplicate arguments")
+  else
+    let locals = List.map (fun (ty, id) -> (id, ty)) args in
+    let tc_ = {tc with locals = locals @ tc.locals} in
+    let _ = typecheck_block tc_ body frtyp in
+    ()
+
 
 (* creating the typchecking context ----------------------------------------- *)
 

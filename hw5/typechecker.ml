@@ -332,7 +332,17 @@ let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   !context
 
 let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
-  failwith "todo: create_global_ctxt"
+  let context = ref tc in
+  List.iter(fun decl ->
+    match decl with
+    | Gvdecl gdecl_node ->
+      let {elt=gdecl} = gdecl_node in
+      let {name; init} = gdecl in
+      let ty = typecheck_exp !context init in
+      context := Tctxt.add_global !context name ty
+    | _ -> ()
+  ) p;
+  !context
 
 
 (* This function implements the |- prog and the H ; G |- prog 

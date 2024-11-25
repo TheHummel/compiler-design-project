@@ -287,7 +287,24 @@ let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
    constants, but can't mention other global values *)
 
 let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
-  failwith "todo: create_struct_ctxt"
+  let context = ref Tctxt.empty in
+
+  List.iter (fun decl ->
+    match decl with
+    | Gtdecl tdecl_node ->
+      let {elt=(id, fs)} = tdecl_node in
+      if check_dups fs then
+        type_error tdecl_node "repeated fields in struct"
+      else        
+        List.iter (fun f -> 
+          if (typecheck_ty tdecl_node !context f.ftyp) <> () then
+            type_error tdecl_node "illegal struct"
+
+        ) fs;
+        context := Tctxt.add_struct !context id fs
+    | _ -> ()
+  ) p;
+  !context
 
 let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   failwith "todo: create_function_ctxt"

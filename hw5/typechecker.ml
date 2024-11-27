@@ -295,7 +295,26 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
       !context, false
     else
       type_error s "illegal declaration"
-  | Ret (exp_node_option) -> failwith "todo: ret"
+  | Ret (exp_node_option) -> 
+    begin match exp_node_option with
+    | Some exp_node -> 
+      begin match to_ret with
+      | RetVoid -> type_error s "illegal return"
+      | RetVal ty ->
+        let exp = exp_node.elt in
+        let exp_ty = typecheck_exp !context exp_node in
+        let check_subtype = subtype !context exp_ty ty in
+        if check_subtype then
+          !context, true
+        else
+          type_error s "illegal return"
+      end
+    | None ->
+      begin match to_ret with
+      | RetVoid -> !context, true
+      | RetVal _ -> type_error s "illegal return"
+      end
+    end
   | SCall (exp_node, exp_node_list) -> failwith "todo: scall"
   | If (exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: if"
   | Cast (rty, id, exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: cast"

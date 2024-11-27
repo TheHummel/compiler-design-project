@@ -389,7 +389,23 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
       | RetVal _ -> type_error s "illegal return"
       end
     end
-  | SCall (exp_node, exp_node_list) -> failwith "todo: scall"
+  | SCall (exp_node, exp_node_list) ->
+    let exp = exp_node.elt in
+    let exp_ty = typecheck_exp !context exp_node in
+    begin match exp_ty with
+    | TRef RFun (args, ret_ty) ->
+      begin match ret_ty with
+      | RetVoid ->
+        let typecheck_args = List.map (fun exp_node -> typecheck_exp !context exp_node) exp_node_list in
+        let check_subtype = List.map2 (fun arg1 arg2 -> subtype !context arg1 arg2) args typecheck_args in
+        if List.for_all (fun x -> x) check_subtype then
+          !context, false
+        else
+          type_error s "illegal call"
+      | RetVal _ -> failwith "todo: return value"
+      end
+    | _ -> type_error s "illegal call"
+    end
   | If (exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: if"
   | Cast (rty, id, exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: cast"
   | For (vdecl_list, exp_node_option1, stmt_node_option2, stmt_node_list) -> failwith "todo: for"

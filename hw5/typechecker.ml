@@ -272,8 +272,16 @@ let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
     - typechecks the body of the function (passing in the expected return type
     - checks that the function actually returns
 *)
-let typecheck_block (tc : Tctxt.t) (b : Ast.block) (to_ret:ret_ty) : bool =
-  failwith "todo: typecheck_block"
+let typecheck_block (tc : Tctxt.t) (block : Ast.block) (ret_ty:ret_ty) : bool =
+  let rec typecheck_stmts (tc : Tctxt.t) (stmts : Ast.stmt Ast.node list) (ret_ty:ret_ty) : bool =
+    match stmts with
+    | [] -> false
+    | stmt::stmts ->
+      let (tc_, ret) = typecheck_stmt tc stmt ret_ty in
+      if ret then true
+      else typecheck_stmts tc_ stmts ret_ty
+  in
+  typecheck_stmts tc block ret_ty
 
 let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
   let {frtyp; fname; args; body} = f in
@@ -281,8 +289,9 @@ let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
   else
     let locals = List.map (fun (ty, id) -> (id, ty)) args in
     let tc_ = {tc with locals = locals @ tc.locals} in
-    let _ = typecheck_block tc_ body frtyp in
-    ()
+    let typecheck_bl = typecheck_block tc_ body frtyp in
+    if not typecheck_bl then type_error l "function does not return"
+    else ()
 
 
 (* creating the typchecking context ----------------------------------------- *)

@@ -240,8 +240,55 @@ let typecheck_function_ty (tc: Tctxt.t) (fdecl_node: Ast.fdecl Ast.node) : Ast.t
    - You will probably find it convenient to add a helper function that implements the 
      block typecheck rules.
 *)
+let check_assign (tc: Tctxt.t) (id: Ast.id) : bool =
+  let check_local =
+    let id_option = lookup_local_option id tc in
+    begin match id_option with
+    | Some _ -> true
+    | None -> false
+    end
+  in
+  let check_not_global_function_id =
+    let id_option = lookup_global_option id tc in
+    begin match id_option with
+    | Some id -> 
+      begin match id with
+      | TRef (RFun _) -> false
+      | _ -> true
+      end
+    | None -> true
+    end
+  in
+  check_local || check_not_global_function_id
+
 let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
-  failwith "todo: implement typecheck_stmt"
+  let context = ref tc in
+  let stmt = s.elt in
+  begin match stmt with
+  | Assn (exp_node1, exp_node2) ->
+    let exp1 = exp_node1.elt in
+    let exp2 = exp_node2.elt in
+    let exp1_ty = typecheck_exp !context exp_node1 in
+    let exp2_ty = typecheck_exp !context exp_node2 in
+    let check_subtype = subtype !context exp2_ty exp1_ty in
+    let check_assumption = 
+      match exp1 with
+      | Id id -> check_assign !context id
+      | _ -> failwith "todo: remaining assn stuff"
+    in
+    if check_subtype && check_assumption then
+      !context, false
+    else
+      type_error s "illegal assignment"
+
+  | Decl vdecl -> failwith "todo: decl"
+  | Ret (exp_node_option) -> failwith "todo: ret"
+  | SCall (exp_node, exp_node_list) -> failwith "todo: scall"
+  | If (exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: if"
+  | Cast (rty, id, exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: cast"
+  | For (vdecl_list, exp_node_option1, stmt_node_option2, stmt_node_list) -> failwith "todo: for"
+  | While (exp_node, stmt_node_list) -> failwith "todo: while"
+  end
 
 
 (* struct type declarations ------------------------------------------------- *)
@@ -278,7 +325,7 @@ let typecheck_block (tc : Tctxt.t) (block : Ast.block) (ret_ty:ret_ty) : bool =
     | [] -> false
     | stmt::stmts ->
       let (tc_, ret) = typecheck_stmt tc stmt ret_ty in
-      if ret then true
+      if ret then true (* todo?: check if return is not at the end of the block *)
       else typecheck_stmts tc_ stmts ret_ty
   in
   typecheck_stmts tc block ret_ty

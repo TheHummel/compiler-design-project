@@ -175,27 +175,100 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
       | None -> type_error e "illegal Id"
       end
     end
-  | CArr (ty, exp_h::exp_tl) -> failwith "todo"
-  | NewArr (ty, exp_node1, id, exp_node2) -> 
-    let exp1 = exp_node1.elt in
-    let exp2 = exp_node2.elt in
-    let type_check = typecheck_ty exp_node1 c ty in
-    let id_option = lookup_local_option id c in
-    let local_check = 
-      match id_option with
-      | Some _ -> false
-      | None -> true
-    in
-    failwith "todo newarr"
-  | Index (exp_node, exp_node2) -> failwith "todo"
-  | Length exp_node -> failwith "todo"
-  | CStruct (id, h::tl) -> failwith "todo"
-  | Proj (exp_node, id) -> failwith "todo"
-  | Call (exp_node, h::tl) -> failwith "todo"
-  | Bop (binop, exp_node, exp_node2) -> failwith "todo"
-  | Uop (unop, exp_node) -> failwith "todo"
-  end
-
+    | CArr (ty, exp_node_list) ->List.iter (fun exp_node -> (* checks if subtype but not if valid type  . Is this equivalent? *)
+      let exp_ty = typecheck_exp c exp_node in
+      if not (subtype c exp_ty ty) then type_error exp_node "not subtype in carr") exp_node_list; TRef (RArray ty)
+    | NewArr (ty, exp_node1, id, exp_node2) -> 
+      let exp1 = exp_node1.elt in
+      let exp2 = exp_node2.elt in
+      let type_check = typecheck_ty exp_node1 c ty in
+      let id_option = lookup_local_option id c in
+      let local_check = 
+        match id_option with
+        | Some _ -> false
+        | None -> true
+      in
+      failwith "todo newarr"
+    | Index (exp_node, exp_node2) ->
+      let exp_ty = typecheck_exp c exp_node in
+      let exp_ty2 = typecheck_exp c exp_node2 in 
+      begin match exp_ty with
+        | TRef (RArray arr_ty) ->  if exp_ty2 = TInt then arr_ty else type_error e "index op must be an int type"
+        | _ -> type_error e "index op must be an array type"
+      end
+    | Length exp_node ->
+      let exp_ty = typecheck_exp c exp_node in 
+      begin match exp_ty with
+      | TRef (RArray arr_ty) -> TInt
+      | _ -> type_error e "len op must be an array type"
+      end
+    | CStruct (id, id_node_list) ->failwith "TODO"
+  (*     match Tctxt.lookup_struct id c with
+      | Some t ->List.iter (fun exp_node -> 
+        let exp_ty = typecheck_exp c exp_node in
+        ) id_node_list; 
+        
+        TRef (RStruct id)
+      | None -> type_error e ("Struct not there") *)
+  
+     
+  
+    | Proj (exp_node, id) ->
+      let struct_ty = typecheck_exp c exp_node in
+      begin match struct_ty with
+        | TRef (RStruct struc) | TNullRef (RStruct struc) -> 
+          let struct_fields = match Tctxt.lookup_struct_option struc c with
+          | Some fields -> fields
+          | None -> type_error e ("Struc gone")
+          in
+          let field = List.find_opt (fun field -> field.fieldName = id) struct_fields in
+          begin match field with
+          | Some f -> f.ftyp  (* Return the field's type *)
+          | None -> type_error e ("field not found")
+          end
+      | _ -> type_error e "Expression is not a struct type"
+      end
+    | Call (exp_node, args_list) -> (* todo geth void function here? *)
+      let funct_ty = typecheck_exp c exp_node in
+      begin match funct_ty with
+      | TRef (RFun (para_ty, ret_ty)) ->
+        let args_ty = List.map (typecheck_exp c) args_list in
+        if List.length para_ty <> List.length args_ty then type_error e "arg count does not match para count";
+          List.iter2 (fun arg_ty1 arg_ty2 ->
+            if not (subtype c arg_ty1 arg_ty2) then
+              type_error e ("not subtype in call")  
+          ) args_ty para_ty; 
+          begin match ret_ty with
+            | RetVal ty -> ty
+            | RetVoid -> type_error e "no void allowedß?"
+          end
+      | _ -> type_error e ("exp is not fun")
+      end
+  
+      
+    | Bop (binop, exp_node, exp_node2) ->
+      let exp1_ty = typecheck_exp c exp_node in
+      let exp2_ty = typecheck_exp c exp_node2 in
+      begin match binop with
+        | Add | Mul | Sub | Shl | Shr | Sar | IAnd | IOr -> (* type int ops *)
+          if (exp1_ty = TInt && exp2_ty = TInt) then exp1_ty else type_error e "One or both are not int type in binry operation"
+        | Lt | Lte | Gt | Gte -> (* type cmp ops *)
+          if (exp1_ty = TInt && exp2_ty = TInt) then TBool else type_error e "One or both are not int type in binry operation"
+        | And | Or -> (* type bool ops *)
+          if(exp1_ty = TBool && exp2_ty = TBool) then TBool else type_error e "One or both are not int type in binry operation"
+        | Eq -> (* type eq either exp1 is subtype of ex2 or the other way around *)
+          failwith "todo eq"
+        | Neq -> failwith "todo nqe"
+        | _ ->failwith "pattern matching bop"
+      end
+    | Uop (unop, exp_node) ->
+      let exp_ty = typecheck_exp c exp_node in
+      begin match unop with
+        | Neg | Bitnot -> if(exp_ty = TInt) then TInt else type_error e "One or both are not int type in unary operation"
+        | Lognot -> if(exp_ty = TBool) then TBool else type_error e "One or both are not int type in unary operation"
+      end
+    end
+  
 
 let typecheck_function_ty (tc: Tctxt.t) (fdecl_node: Ast.fdecl Ast.node) : Ast.ty =
   let {elt=fdecl} = fdecl_node in

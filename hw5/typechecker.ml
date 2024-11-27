@@ -281,7 +281,20 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
     else
       type_error s "illegal assignment"
 
-  | Decl vdecl -> failwith "todo: decl"
+  | Decl vdecl ->
+    let (id, exp_node) = vdecl in
+    let exp = exp_node.elt in
+    let exp_ty = typecheck_exp !context exp_node in
+    let id_used = Tctxt.lookup_local_option id !context in
+    let id_not_used = 
+      match id_used with
+      | Some _ -> false
+      | None -> true
+    in
+    if id_not_used then
+      !context, false
+    else
+      type_error s "illegal declaration"
   | Ret (exp_node_option) -> failwith "todo: ret"
   | SCall (exp_node, exp_node_list) -> failwith "todo: scall"
   | If (exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: if"

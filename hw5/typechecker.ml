@@ -181,14 +181,18 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   | NewArr (ty, exp_node1, id, exp_node2) -> 
     let exp1 = exp_node1.elt in
     let exp2 = exp_node2.elt in
-    let type_check = typecheck_ty exp_node1 c ty in
-    let id_option = lookup_local_option id c in
+    let ty_checked = typecheck_ty e c ty in
+    let type_check_node1 = typecheck_exp c exp_node1 in
+    if not(type_check_node1 = TInt) then type_error exp_node1 "newArr: not int exp 1 is not int"else
+    let id_option = lookup_local_option id c in 
     let local_check = 
       match id_option with
-      | Some _ -> false
+      | Some _ -> type_error e "NewArr: array already exists"
       | None -> true
     in
-    failwith "todo newarr"
+    let ty_check_node2 = typecheck_exp c exp_node2 in
+    let is_sub = subtype c ty_check_node2 ty in if is_sub then
+    TRef (RArray ty) else type_error e "NewArr: is not arr subty"
   | Index (exp_node, exp_node2) ->
     let exp_ty = typecheck_exp c exp_node in
     let exp_ty2 = typecheck_exp c exp_node2 in 

@@ -378,7 +378,21 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
     let check_assumption = 
       match exp1 with
       | Id id -> check_assign !context id
-      | _ -> failwith "todo: remaining assn stuff"
+      | Index (array, index) ->
+        let array_ty = typecheck_exp !context array in
+        let index_ty = typecheck_exp !context index in
+        begin match array_ty with
+        | TRef (RArray ty) ->
+          if index_ty = TInt then
+            true
+          else
+            false
+        | _ -> false
+        end
+      | Proj (exp_node, id) ->
+        let struct_ty = typecheck_exp !context exp_node in
+        check_assign !context id
+      | _ -> false
     in
     if check_subtype && check_assumption then
       !context, false

@@ -170,7 +170,7 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
     | Some ty -> ty
     | None -> 
       let id_ty_global = Tctxt.lookup_global_option id c in
-      begin match id_ty with
+      begin match id_ty_global with
       | Some ty -> ty
       | None -> type_error e "illegal Id"
       end
@@ -202,14 +202,24 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
     | TRef (RArray arr_ty) -> TInt
     | _ -> type_error e "len op must be an array type"
     end
-  | CStruct (id, id_node_list) ->failwith "TODO"
-(*     match Tctxt.lookup_struct id c with
-    | Some t ->List.iter (fun exp_node -> 
-      let exp_ty = typecheck_exp c exp_node in
-      ) id_node_list; 
+  | CStruct (id, id_node_list) -> (* todo duplicates  *)
+    
+    begin match Tctxt.lookup_struct_option id c with
+    | Some fields ->
+      if ((List.length fields) <> (List.length id_node_list)) then type_error e "fields do not match in cstruct" else
+      let args = List.iter (fun (exp_id, exp_node) ->
       
+      let exp_ty = typecheck_exp c exp_node in (* check if field of new struc are valid *)
+      let exp_option_ty = lookup_field_option exp_id id c in (* check if the provided types are subtypes *)
+      begin match exp_option_ty with
+        | None -> type_error e "MUST be in Lookup"
+        | Some ty -> if subtype c exp_ty ty then () else type_error e "subtype in cstruct do not match"
+      end 
+        ) id_node_list in
       TRef (RStruct id)
-    | None -> type_error e ("Struct not there") *)
+    | None -> type_error e ("Struct not there")
+    end
+
 
     
 

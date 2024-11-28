@@ -416,8 +416,14 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
     else
       type_error s "illegal if"
   | Cast (rty, id, exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: cast"
-  | For (vdecl_list, exp_node_option1, stmt_node_option2, stmt_node_list) -> failwith "todo: for"
-  | While (exp_node, stmt_node_list) -> failwith "todo: while"
+  | While (exp_node, stmt_node_list) ->
+    let exp = exp_node.elt in
+    let exp_ty = typecheck_exp !context exp_node in
+    let typecheck_block = typecheck_block !context stmt_node_list to_ret in
+    if exp_ty = TBool && typecheck_block then
+      !context, false
+    else
+      type_error s "illegal while"
   end
 
 and typecheck_block (tc : Tctxt.t) (block : Ast.block) (ret_ty:ret_ty) : bool =

@@ -483,7 +483,7 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
     in
     let typecheck_block = typecheck_block tc_new stmt_node_list to_ret in
     if typecheck_exp (* && typecheck_block *) then
-      tc_new, false
+      tc, false
     else
       type_error s "illegal for"
   | While (exp_node, stmt_node_list) ->

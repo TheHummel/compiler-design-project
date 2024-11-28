@@ -406,11 +406,30 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
       end
     | _ -> type_error s "illegal call"
     end
-  | If (exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: if"
+  | If (exp_node, stmt_node_list1, stmt_node_list2) ->
+    let exp = exp_node.elt in
+    let exp_ty = typecheck_exp !context exp_node in
+    let typecheck_block1 = typecheck_block !context stmt_node_list1 to_ret in
+    let typecheck_block2 = typecheck_block !context stmt_node_list2 to_ret in
+    if exp_ty = TBool && typecheck_block1 && typecheck_block2 then
+      !context, true
+    else
+      type_error s "illegal if"
   | Cast (rty, id, exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: cast"
   | For (vdecl_list, exp_node_option1, stmt_node_option2, stmt_node_list) -> failwith "todo: for"
   | While (exp_node, stmt_node_list) -> failwith "todo: while"
   end
+
+and typecheck_block (tc : Tctxt.t) (block : Ast.block) (ret_ty:ret_ty) : bool =
+  let rec typecheck_stmts (tc : Tctxt.t) (stmts : Ast.stmt Ast.node list) (ret_ty:ret_ty) : bool =
+    match stmts with
+    | [] -> false
+    | stmt::stmts ->
+      let (tc_, ret) = typecheck_stmt tc stmt ret_ty in
+      if ret then true (* todo?: check if return is not at the end of the block *)
+      else typecheck_stmts tc_ stmts ret_ty
+  in
+  typecheck_stmts tc block ret_ty
 
 
 (* struct type declarations ------------------------------------------------- *)
@@ -441,16 +460,6 @@ let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
     - typechecks the body of the function (passing in the expected return type
     - checks that the function actually returns
 *)
-let typecheck_block (tc : Tctxt.t) (block : Ast.block) (ret_ty:ret_ty) : bool =
-  let rec typecheck_stmts (tc : Tctxt.t) (stmts : Ast.stmt Ast.node list) (ret_ty:ret_ty) : bool =
-    match stmts with
-    | [] -> false
-    | stmt::stmts ->
-      let (tc_, ret) = typecheck_stmt tc stmt ret_ty in
-      if ret then true (* todo?: check if return is not at the end of the block *)
-      else typecheck_stmts tc_ stmts ret_ty
-  in
-  typecheck_stmts tc block ret_ty
 
 let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
   let {frtyp; fname; args; body} = f in

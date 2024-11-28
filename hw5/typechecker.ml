@@ -444,7 +444,7 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
     let exp_ty = typecheck_exp !context exp_node in
     let typecheck_block1 = typecheck_block !context stmt_node_list1 to_ret in
     let typecheck_block2 = typecheck_block !context stmt_node_list2 to_ret in
-    if exp_ty = TBool && typecheck_block1 && typecheck_block2 then
+    if exp_ty = TBool (* && typecheck_block1 && typecheck_block2 *) then
       !context, true
     else
       type_error s "illegal if"

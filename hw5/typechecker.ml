@@ -65,8 +65,8 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
   let { locals; globals; structs } = c in
   match t1, t2 with
   | RString, RString -> true
-  | RStruct s1, RStruct s2 -> s1 = s2
-  | RArray t1, RArray t2 -> subtype c t1 t2
+  | RStruct s1, RStruct s2 -> s1 = s2 || check_fields c s1 s2
+  | RArray array1, RArray array2 -> subtype c array1 array2
   | RFun (args1, ret1), RFun (args2, ret2) ->
     let l1 = List.length args1 in
     let l2 = List.length args2 in
@@ -86,6 +86,18 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
     end
   | _ -> false
 
+and check_fields (c : Tctxt.t) (s1 : Ast.id) (s2 : Ast.id) : bool =
+  let fields1 = Tctxt.lookup_struct s1 c in
+  let fields2 = Tctxt.lookup_struct s2 c in
+  let rec check_fields_rec fields1 fields2 =
+    match fields1, fields2 with
+    | [], [] -> true
+    | [], _ -> false
+    | _, [] -> true
+    | h1::tl1, h2::tl2 -> h1.fieldName = h2.fieldName && h1.ftyp = h2.ftyp && check_fields_rec tl1 tl2
+    | _ -> false
+  in
+  check_fields_rec fields1 fields2
 
 (* well-formed types -------------------------------------------------------- *)
 (* Implement a (set of) functions that check that types are well formed according

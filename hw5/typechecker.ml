@@ -609,6 +609,10 @@ let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
 
 let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   let context = ref tc in
+  List.iter (fun (name, (args, ret)) ->
+    let fty = TRef (RFun (args, ret)) in
+    context := Tctxt.add_global !context name fty
+  ) builtins;
   List.iter(fun decl ->
     match decl with
     | Gfdecl fdecl_node ->

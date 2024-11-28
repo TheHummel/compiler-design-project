@@ -433,7 +433,20 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
       !context, true
     else
       type_error s "illegal if"
-  | Cast (rty, id, exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: cast"
+  | Cast (rty, id, exp_node, stmt_node_list1, stmt_node_list2) ->
+    let exp = exp_node.elt in
+    let exp_ty = typecheck_exp !context exp_node in
+    begin match exp_ty with
+    | TNullRef rty -> 
+      let subtype_check = subtype !context exp_ty (TRef rty) in
+      let typecheck_block1 = typecheck_block !context stmt_node_list1 to_ret in
+      let typecheck_block2 = typecheck_block !context stmt_node_list2 to_ret in
+      if subtype_check && typecheck_block1 && typecheck_block2 then
+        !context, false
+      else
+        type_error s "illegal cast"
+    | _ -> type_error s "illegal cast"
+    end
   | For (vdecl_list, exp_node_option, stmt_node_option, stmt_node_list) ->
     let tc_new = List.fold_left (fun tc vdecl -> typecheck_vdecl tc s vdecl) !context vdecl_list in
     let typecheck_exp = 

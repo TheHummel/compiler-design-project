@@ -430,8 +430,27 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
     else
       type_error s "illegal if"
   | Cast (rty, id, exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: cast"
-  | For (vdecl_list, exp_node_option1, stmt_node_option2, stmt_node_list) ->
-    failwith "todo: for"
+  | For (vdecl_list, exp_node_option, stmt_node_option, stmt_node_list) ->
+    let tc_new = List.fold_left (fun tc vdecl -> typecheck_vdecl tc s vdecl) !context vdecl_list in
+    let typecheck_exp = 
+      begin match exp_node_option with
+      | Some exp_node -> 
+        (typecheck_exp tc_new exp_node) = TBool
+      | None -> true
+      end
+    in
+    let stmt_node_list = 
+      begin match stmt_node_option with
+      | Some stmt_node ->
+        stmt_node_list @ [stmt_node]
+      | None -> stmt_node_list
+      end
+    in
+    let typecheck_block = typecheck_block tc_new stmt_node_list to_ret in
+    if typecheck_exp && typecheck_block then
+      tc_new, false
+    else
+      type_error s "illegal for"
   | While (exp_node, stmt_node_list) ->
     let exp = exp_node.elt in
     let exp_ty = typecheck_exp !context exp_node in

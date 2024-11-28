@@ -179,7 +179,7 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   | CArr (ty, exp_node_list) ->List.iter (fun exp_node -> (* checks if subtype but not if valid type  . Is this equivalent? *)
     let exp_ty = typecheck_exp c exp_node in
     if not (subtype c exp_ty ty) then type_error exp_node "not subtype in carr") exp_node_list; TRef (RArray ty)
-  | NewArr (ty, exp_node1, id, exp_node2) -> 
+  | NewArr (ty, exp_node1, id, exp_node2) ->  (* needs fix *)
     let exp1 = exp_node1.elt in
     let exp2 = exp_node2.elt in
     let ty_checked = typecheck_ty e c ty in
@@ -207,7 +207,7 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
     | TRef (RArray arr_ty) -> TInt
     | _ -> type_error e "len op must be an array type"
     end
-  | CStruct (id, id_node_list) -> (* todo duplicates  *)
+  | CStruct (id, id_node_list) -> (* todo duplicates  *) (* needs fix *)
     
     begin match Tctxt.lookup_struct_option id c with
     | Some fields ->
@@ -479,7 +479,7 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
       end
     in
     let typecheck_block = typecheck_block tc_new stmt_node_list to_ret in
-    if typecheck_exp && typecheck_block then
+    if typecheck_exp (* && typecheck_block *) then
       tc_new, false
     else
       type_error s "illegal for"
@@ -487,7 +487,7 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
     let exp = exp_node.elt in
     let exp_ty = typecheck_exp !context exp_node in
     let typecheck_block = typecheck_block !context stmt_node_list to_ret in
-    if exp_ty = TBool && typecheck_block then
+    if exp_ty = TBool (* && typecheck_block *) then
       !context, false
     else
       type_error s "illegal while"

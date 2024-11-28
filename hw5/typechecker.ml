@@ -102,12 +102,12 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
 
     - tc contains the structure definition context
  *)
-let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
+ let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
   match t with
   | TBool | TInt -> ()
   | TRef reft -> typecheck_refty l tc reft
   | TNullRef reft -> typecheck_refty l tc reft
-  | _ -> failwith "illegal type"
+  | _ -> type_error l "ty: not matched rty"
   (* todo: use type_error *)
 
 
@@ -116,7 +116,8 @@ and typecheck_refty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
   | RString -> ()
   | RArray t -> typecheck_ty l tc t
   | RStruct id ->
-    let strct = lookup_struct id tc in
+    let strct_opt = lookup_struct_option id tc in
+    let strct = begin match strct_opt with | Some  str-> str | None -> type_error l "refty: strct not found" end in
     List.iter (fun f -> typecheck_ty l tc f.ftyp) strct
   | RFun (args, retty) ->
     List.iter (typecheck_ty l tc) args;
@@ -124,7 +125,7 @@ and typecheck_refty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
     | RetVoid -> ()
     | RetVal t -> typecheck_ty l tc t
 
-  | _ -> failwith "illegal reftype"
+  | _ -> type_error l "refty: not matched rty"
 
 
 (* typechecking expressions ------------------------------------------------- *)

@@ -335,6 +335,21 @@ let check_assign (tc: Tctxt.t) (id: Ast.id) : bool =
   in
   check_local || check_not_global_function_id
 
+let typecheck_vdecl (tc : Tctxt.t) (s : Ast.stmt node) (vdecl : Ast.vdecl) : Tctxt.t =
+  let (id, exp_node) = vdecl in
+  let exp = exp_node.elt in
+  let exp_ty = typecheck_exp tc exp_node in
+  let id_used = Tctxt.lookup_local_option id tc in
+  let id_not_used = 
+    match id_used with
+    | Some _ -> false
+    | None -> true
+  in
+  if id_not_used then
+    Tctxt.add_local tc id exp_ty
+  else
+    type_error s "illegal declaration"
+
 let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
   let context = ref tc in
   let stmt = s.elt in
@@ -356,19 +371,8 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
       type_error s "illegal assignment"
 
   | Decl vdecl ->
-    let (id, exp_node) = vdecl in
-    let exp = exp_node.elt in
-    let exp_ty = typecheck_exp !context exp_node in
-    let id_used = Tctxt.lookup_local_option id !context in
-    let id_not_used = 
-      match id_used with
-      | Some _ -> false
-      | None -> true
-    in
-    if id_not_used then
-      !context, false
-    else
-      type_error s "illegal declaration"
+    let tc_new = typecheck_vdecl !context s vdecl in
+    tc_new, false
   | Ret (exp_node_option) -> 
     begin match exp_node_option with
     | Some exp_node -> 
@@ -416,6 +420,8 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
     else
       type_error s "illegal if"
   | Cast (rty, id, exp_node, stmt_node_list1, stmt_node_list2) -> failwith "todo: cast"
+  | For (vdecl_list, exp_node_option1, stmt_node_option2, stmt_node_list) ->
+    failwith "todo: for"
   | While (exp_node, stmt_node_list) ->
     let exp = exp_node.elt in
     let exp_ty = typecheck_exp !context exp_node in

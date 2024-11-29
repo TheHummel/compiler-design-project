@@ -276,7 +276,19 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
        of the array struct representation.
   *)
   | Ast.Length e ->
-    failwith "todo:implement Ast.Length case"
+    let arr_ty, arr_op, code = cmp_exp tc c e in
+    let length_ty, length_code =
+      match arr_ty with
+      | Ptr (Struct arr_struct) ->
+        let ptr_id, length_id = gensym "length_ptr", gensym "length" in
+        let gep_instr = I(ptr_id, Gep(Ptr I64, arr_op, [i64_op_of_int 0; i64_op_of_int 0])) in
+        let load_instr = I(length_id, Load(I64, Id ptr_id)) in
+        I64, [gep_instr; load_instr]
+
+      | _ -> failwith "not array"
+    in
+    length_ty, Id (gensym "length"), length_code @ code
+
 
   | Ast.Index (e, i) ->
     let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
@@ -310,10 +322,27 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
      you could write the loop using abstract syntax and then call cmp_stmt to
      compile that into LL code...
   *)
-  | Ast.NewArr (elt_ty, e1, id, e2) ->    
-    let _, size_op, size_code = cmp_exp tc c e1 in
-    let arr_ty, arr_op, alloc_code = oat_alloc_array tc elt_ty size_op in
-    arr_ty, arr_op, size_code >@ alloc_code
+  | Ast.NewArr (elt_ty, e1, id, e2) ->
+    let idx_var = gensym "idx" in
+    let temp_var1 = gensym "temp1" in
+    let temp_var2 = gensym "temp2" in
+    let gep_var = gensym "gep" in
+    let cond_var = gensym "cond" in
+    let cond_lbl = gensym "check" in
+    let body_lbl = gensym "loop_body" in
+    let exit_lbl = gensym "exit" in
+    let size_ty, size_op, size_instr = cmp_exp tc c e1 in
+    let arr_ty, arr_op, alloc_instr = oat_alloc_array tc elt_ty size_op in
+    let updated_ctxt = Ctxt.add c id (Ptr I64, Id idx_var) in
+    let e2_ty, e2_op, e2_instr = cmp_exp tc updated_ctxt e2 in
+
+    arr_ty, arr_op, 
+    size_instr >@ alloc_instr >@ [E(idx_var, Alloca I64)] >@ [I("", Store (I64, Const 0L, Id idx_var))] >@
+    [T(Br cond_lbl)] >@ [L cond_lbl] >@
+    [I(temp_var1, Load (Ptr I64, Id idx_var))] >@ [I(cond_var, Icmp (Ne, I64, Id temp_var1, size_op))] >@ [T(Cbr (Id cond_var, body_lbl, exit_lbl))] >@
+    [L body_lbl] >@ e2_instr >@
+    [I(gep_var, Gep (arr_ty, arr_op, [Const 0L; Const 1L; Id temp_var1]))] >@ [I("", Store (cmp_ty tc elt_ty, e2_op, Id gep_var))] >@ [I(temp_var2, Binop (Add, I64, Id temp_var1, Const 1L))] >@ [I("", Store (I64, Id temp_var2, Id idx_var))] >@ [T(Br cond_lbl)] >@
+    [L exit_lbl]
 
    (* STRUCT TASK: complete this code that compiles struct expressions.
       For each field component of the struct
@@ -360,12 +389,10 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c:Ctxt.t) (e:exp node) : Ll.ty * Ll.operand *
       | Ptr (Struct [_; Array (_,t)]) -> t 
       | _ -> failwith "Index: indexed into non pointer" in
     let ptr_id, tmp_id = gensym "index_ptr", gensym "tmp" in
+    let fun_id = gensym "fun" in
     ans_ty, (Id ptr_id),
-    arr_code >@ ind_code >@ lift
-      [ptr_id, Gep(arr_ty, arr_op, [i64_op_of_int 0; i64_op_of_int 1; ind_op]) ]
-
-   
-
+    arr_code >@ ind_code >@ lift [tmp_id, Bitcast(arr_ty, arr_op, Ptr I64); fun_id, Call (Void, Gid "oat_assert_array_length", [Ptr I64, Id tmp_id; I64, ind_op]);
+    ptr_id, Gep(arr_ty, arr_op, [i64_op_of_int 0; i64_op_of_int 1; ind_op]) ]
   | _ -> failwith "invalid lhs expression"
 
 and cmp_call (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) (es:Ast.exp node list) : Ll.ty * Ll.operand * stream =

@@ -165,6 +165,18 @@ and typecheck_refty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
    a=1} is well typed.  (You should sort the fields to compare them.)
 
 *)
+
+let rec check_dups fs =
+  match fs with
+  | [] -> false
+  | h :: t -> (List.exists (fun x -> x.fieldName = h.fieldName) t) || check_dups t
+
+let rec check_dups_function args =
+  match args with
+  | [] -> false
+  | h::tl -> (List.exists (fun x -> x = h) tl) || check_dups_function tl
+
+
 let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   let exp = e.elt in
   begin match exp with
@@ -226,22 +238,29 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
     | TRef (RArray arr_ty) -> TInt
     | _ -> type_error e "len op must be an array type"
     end
-  | CStruct (id, id_node_list) -> (* todo duplicates  *) (* needs fix *)
-    
-    begin match Tctxt.lookup_struct_option id c with
-    | Some fields ->
-      if ((List.length fields) <> (List.length id_node_list)) then type_error e "fields do not match in cstruct" else
-      let args = List.iter (fun (exp_id, exp_node) ->
-      
-      let exp_ty = typecheck_exp c exp_node in (* check if field of new struc are valid *)
-      let exp_option_ty = lookup_field_option exp_id id c in (* check if the provided types are subtypes *)
-      begin match exp_option_ty with
-        | None -> type_error e "MUST be in Lookup"
-        | Some ty -> if subtype c exp_ty ty then () else type_error e "subtype in cstruct do not match"
-      end 
-        ) id_node_list in
-      TRef (RStruct id)
-    | None -> type_error e ("Struct not there")
+  | CStruct (id, fields) -> 
+    let strct_option = lookup_struct_option id c in
+    begin match strct_option with
+      | None -> type_error e "struct not in context"
+      | Some fields_ -> 
+          if List.length fields <> List.length fields_ then 
+            type_error e "fields do not match"
+          else if check_dups_function (List.map fst fields) then 
+            type_error e "duplicate fields"
+          else 
+            let res = ref [] in
+            List.iter (fun (id_, exp_) ->
+              let exp_ty = typecheck_exp c exp_ in
+              match lookup_field_option id id_ c with
+              | None -> res := false :: !res
+              | Some ty -> 
+                  let is_subtype = subtype c exp_ty ty in
+                  res := is_subtype :: !res
+            ) fields;
+            if List.fold_left (&&) true !res then
+              TRef (RStruct id)
+            else 
+              type_error e "field types do not match"
     end
   | Proj (exp_node, id) ->
     let struct_ty = typecheck_exp c exp_node in
@@ -526,15 +545,6 @@ and typecheck_block (tc : Tctxt.t) (block : Ast.block) (ret_ty:ret_ty) : bool =
  *)
 
 (* Helper function to look for duplicate field names *)
-let rec check_dups fs =
-  match fs with
-  | [] -> false
-  | h :: t -> (List.exists (fun x -> x.fieldName = h.fieldName) t) || check_dups t
-
-let rec check_dups_function args =
-  match args with
-  | [] -> false
-  | h::tl -> (List.exists (fun x -> x = h) tl) || check_dups_function tl
 
 let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
   if check_dups fs

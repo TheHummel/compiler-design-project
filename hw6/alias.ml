@@ -33,8 +33,68 @@ type fact = SymPtr.t UidM.t
    - Other instructions do not define pointers
 
  *)
-let insn_flow ((u,i):uid * insn) (d:fact) : fact =
-  failwith "Alias.insn_flow unimplemented"
+ let insn_flow ((u, i) : uid * insn) (d : fact) : fact =
+  match i with
+  | Alloca(ty) -> UidM.add u SymPtr.Unique d
+
+  | Load (ty, op) -> 
+    begin match ty with
+    | Ptr (Ptr(_)) -> 
+        begin match op with
+        | Id(src) -> UidM.add u SymPtr.MayAlias d
+        | _ -> UidM.add u SymPtr.UndefAlias d
+        end
+    | _ -> UidM.add u SymPtr.UndefAlias d
+    end
+
+
+
+  | Call (ty, op, args) -> (* jannis gucken!! TODO *)
+      let d_temp =
+        match ty with
+        | Ptr _ -> UidM.add u SymPtr.MayAlias d
+        | _ -> d
+      in
+      List.fold_left (fun d op -> match op with
+        | (Ptr(_), Id(src)) -> UidM.add src SymPtr.MayAlias d
+        | _ -> d
+      ) d_temp args
+
+  | Store (ty, op1, op2) -> 
+    begin match ty with
+    | Ptr (Ptr(_)) -> 
+        begin match op2 with
+        | Id(src) -> UidM.add src SymPtr.MayAlias d
+        | _ ->  UidM.add u SymPtr.UndefAlias d
+        end
+    | _ -> UidM.add u SymPtr.UndefAlias d
+    end
+    
+
+  | Bitcast (ty1, op, ty2) ->
+    let d_temp = begin match ty1 with
+    | Ptr(_) -> UidM.add u SymPtr.MayAlias d
+    | _ -> d
+    end in 
+    begin match ty2 with
+    | Ptr(_) ->
+      begin match op with
+      | Id(src) -> UidM.add src SymPtr.MayAlias d_temp
+      end
+    | _ -> d_temp
+    end
+  | Gep (ty, ptr, _) ->
+    begin match ty with
+    | Ptr(_) -> 
+        begin match ptr with
+        | Id(src) -> UidM.add src SymPtr.MayAlias (UidM.add u SymPtr.MayAlias d)
+        | _ -> UidM.add u SymPtr.MayAlias d
+        end
+    | _ -> UidM.add u SymPtr.MayAlias d
+    end
+  
+
+  | _ -> UidM.add u SymPtr.UndefAlias d
 
 
 (* The flow function across terminators is trivial: they never change alias info *)
@@ -68,8 +128,18 @@ module Fact =
        It may be useful to define a helper function that knows how to take the
        join of two SymPtr.t facts.
     *)
-    let combine (ds:fact list) : fact =
-      failwith "Alias.Fact.combine not implemented"
+    let combine (ds: fact list) : fact =
+      let merge_helper key v1 v2 =
+        match (v1, v2) with
+        | (Some SymPtr.MayAlias, _) | (_, Some SymPtr.MayAlias) -> Some SymPtr.MayAlias
+        | (Some SymPtr.Unique, Some SymPtr.Unique) -> Some SymPtr.Unique
+        | (Some SymPtr.Unique, None) | (None, Some SymPtr.Unique) -> Some SymPtr.Unique
+        | (None, None) -> None
+        | (Some SymPtr.UndefAlias, _) | (_, Some SymPtr.UndefAlias) -> Some SymPtr.UndefAlias
+      in
+      List.fold_left (fun acc ds ->
+        UidM.merge merge_helper acc ds
+      ) UidM.empty ds
   end
 
 (* instantiate the general framework ---------------------------------------- *)

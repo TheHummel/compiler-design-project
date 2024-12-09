@@ -36,8 +36,60 @@ type fact = SymConst.t UidM.t
    - Uid of stores and void calls are UndefConst-out
    - Uid of all other instructions are NonConst-out
  *)
-let insn_flow (u,i:uid * insn) (d:fact) : fact =
-  failwith "Constprop.insn_flow unimplemented"
+ let insn_flow (u, i : uid * insn) (d : fact) : fact = (* Jannis pls look at this TODO *)
+  let resolve_operand op fact_map =
+    match op with
+    | Const v -> SymConst.Const v
+    | Id id -> (
+      match UidM.find_opt id fact_map with
+      | Some v -> v
+      | None -> SymConst.UndefConst)
+    | _ -> SymConst.NonConst
+  in
+  let comp_res op state1 state2 =
+    match (state1, state2) with
+    | (SymConst.Const v1, SymConst.Const v2) -> (
+        match op with
+        | Add -> SymConst.Const (Int64.add v1 v2)
+        | Sub -> SymConst.Const (Int64.sub v1 v2)
+        | Mul -> SymConst.Const (Int64.mul v1 v2)
+        | Shl -> SymConst.Const (Int64.shift_left v1 (Int64.to_int v2))
+        | Lshr -> SymConst.Const (Int64.shift_right_logical v1 (Int64.to_int v2))
+        | Ashr -> SymConst.Const (Int64.shift_right v1 (Int64.to_int v2))
+        | And -> SymConst.Const (Int64.logand v1 v2)
+        | Or -> SymConst.Const (Int64.logor v1 v2)
+        | Xor -> SymConst.Const (Int64.logxor v1 v2))
+    | (SymConst.UndefConst, _) | (_, SymConst.UndefConst) -> SymConst.UndefConst
+    | _ -> SymConst.NonConst
+  in
+  let comp_cmp cmp state1 state2 =
+    match (state1, state2) with
+    | (SymConst.Const v1, SymConst.Const v2) -> (
+        match cmp with
+        | Eq -> SymConst.Const (if Int64.equal v1 v2 then 1L else 0L)
+        | Ne -> SymConst.Const (if Int64.equal v1 v2 then 0L else 1L)
+        | Slt -> SymConst.Const (if Int64.compare v1 v2 < 0 then 1L else 0L)
+        | Sle -> SymConst.Const (if Int64.compare v1 v2 <= 0 then 1L else 0L)
+        | Sgt -> SymConst.Const (if Int64.compare v1 v2 > 0 then 1L else 0L)
+        | Sge -> SymConst.Const (if Int64.compare v1 v2 >= 0 then 1L else 0L))
+    | (SymConst.UndefConst, _) | (_, SymConst.UndefConst) -> SymConst.UndefConst
+    | _ -> SymConst.NonConst
+  in
+  let result =
+    begin match i with
+    | Binop (op, _, op1, op2) ->
+        let state1 = resolve_operand op1 d in
+        let state2 = resolve_operand op2 d in
+        comp_res op state1 state2
+    | Icmp (cmp, _, op1, op2) ->
+        let state1 = resolve_operand op1 d in
+        let state2 = resolve_operand op2 d in
+        comp_cmp cmp state1 state2
+    | Store _ | Call (Void, _, _) -> SymConst.UndefConst
+    | Alloca _ | Load _ | Bitcast _ | Gep _ | Call _ -> SymConst.NonConst end
+  in
+  UidM.add u ( result) d
+
 
 (* The flow function across terminators is trivial: they never change const info *)
 let terminator_flow (t:terminator) (d:fact) : fact = d
@@ -62,8 +114,26 @@ module Fact =
 
     (* The constprop analysis should take the meet over predecessors to compute the
        flow into a node. You may find the UidM.merge function useful *)
-    let combine (ds:fact list) : fact = 
-      failwith "Constprop.Fact.combine unimplemented"
+    let combine (ds:fact list) : fact = (* jannis not todo I think its fine *)
+      let open SymConst in
+      match ds with
+      | [] -> UidM.empty
+      | [d] -> d
+      | _ -> 
+        List.fold_left (fun acc d ->
+          UidM.merge (fun _k v1 v2 ->
+            match (v1, v2) with
+            | (Some Const x, Some Const y) when x = y -> Some (Const x)
+            | (Some UndefConst, Some x) -> Some x
+            | (Some x, Some UndefConst) -> Some x
+            | (Some(Const x), _) -> Some(SymConst.Const x)
+            | (_, Some(SymConst.Const y)) -> Some(SymConst.Const y)
+            | (Some(SymConst.UndefConst), y) -> y
+            | (x, Some(SymConst.UndefConst)) -> x
+            | _ -> Some NonConst
+          ) acc d
+        ) (List.hd ds) (List.tl ds)
+
   end
 
 (* instantiate the general framework ---------------------------------------- *)

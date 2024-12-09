@@ -159,14 +159,71 @@ let analyze (g:Cfg.t) : Graph.t =
 (* run constant propagation on a cfg given analysis results ----------------- *)
 (* HINT: your cp_block implementation will probably rely on several helper 
    functions.                                                                 *)
-let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
-  let open SymConst in
+   let run (cg: Graph.t) (cfg: Cfg.t) : Cfg.t = (* janns todo halb ist eigentlich ganz gut so funktioniert nur nicht *)
+    let open SymConst in
   
-
-  let cp_block (l:Ll.lbl) (cfg:Cfg.t) : Cfg.t =
-    let b = Cfg.block cfg l in
-    let cb = Graph.uid_out cg l in
-    failwith "Constprop.cp_block unimplemented"
-  in
-
-  LblS.fold cp_block (Cfg.nodes cfg) cfg
+    (* Centralized resolution of operand constants *)
+    let resolve_operand (constants: int64 UidM.t) (op: Ll.operand) : Ll.operand =
+      match op with
+      | Id uid -> (
+          match UidM.find_opt uid constants with
+          | Some value -> Ll.Const value
+          | None -> op)
+      | _ -> op
+    in
+  
+    (* Rewrite a single instruction *)
+    let rewrite_instruction (constants: int64 UidM.t) ((uid, insn): Ll.uid * Ll.insn) : Ll.uid * Ll.insn =
+      let rewritten_insn =
+        match insn with
+        | Binop (bop, ty, op1, op2) -> Binop (bop, ty, resolve_operand constants op1, resolve_operand constants op2)
+        | Icmp (cond, ty, op1, op2) -> Icmp (cond, ty, resolve_operand constants op1, resolve_operand constants op2)
+        | Load (ty, op) -> Load (ty, resolve_operand constants op)
+        | Store (ty, op1, op2) -> Store (ty, resolve_operand constants op1, resolve_operand constants op2)
+        | Call (ty, op, args) ->
+            Call (ty, resolve_operand constants op, List.map (fun (t, o) -> (t, resolve_operand constants o)) args)
+        | Gep (ty, base, indices) -> Gep (ty, resolve_operand constants base, List.map (resolve_operand constants) indices)
+        | Bitcast (ty1, op, ty2) -> Bitcast (ty1, resolve_operand constants op, ty2)
+        | _ -> insn
+      in
+      (uid, rewritten_insn)
+    in
+  
+    (* Rewrite a single terminator *)
+    let rewrite_terminator (constants: int64 UidM.t) ((uid, term): Ll.uid * Ll.terminator) : Ll.uid * Ll.terminator =
+      let rewritten_term =
+        match term with
+        | Ret (ty, Some op) -> Ret (ty, Some (resolve_operand constants op))
+        | Cbr (op, lbl1, lbl2) -> Cbr (resolve_operand constants op, lbl1, lbl2)
+        | _ -> term
+      in
+      (uid, rewritten_term)
+    in
+  
+    (* Process a single block *)
+    let process_block (label: Ll.lbl) (cfg: Cfg.t) : Cfg.t =
+      let block = Cfg.block cfg label in
+      let { insns; term } = block in
+  
+      (* Analyze dependencies and precompute resolved constants *)
+      let cb = Graph.uid_out cg label in
+      let constants =
+        List.fold_left
+          (fun acc (uid, _) ->
+            match UidM.find_opt uid (cb uid) with
+            | Some (Const value) -> UidM.add uid value acc
+            | _ -> acc)
+          UidM.empty insns
+      in
+  
+      (* Rewrite instructions and terminators *)
+      let new_insns = List.map (rewrite_instruction constants) insns in
+      let new_term = rewrite_terminator constants term in
+  
+      (* Update the block in the CFG *)
+      let updated_block = { insns = new_insns; term = new_term } in
+      { cfg with blocks = LblM.add label updated_block cfg.blocks }
+    in
+  
+    (* Process all blocks in the CFG *)
+    LblS.fold process_block (Cfg.nodes cfg) cfg

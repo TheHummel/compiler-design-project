@@ -36,7 +36,6 @@ type fact = SymPtr.t UidM.t
  let insn_flow ((u, i) : uid * insn) (d : fact) : fact =
   match i with
   | Alloca(ty) -> UidM.add u SymPtr.Unique d
-
   | Load (ty, op) -> 
     begin match ty with
     | Ptr (Ptr(_)) -> 
@@ -46,20 +45,17 @@ type fact = SymPtr.t UidM.t
         end
     | _ -> UidM.add u SymPtr.UndefAlias d
     end
-
-
-
-  | Call (ty, op, args) -> (* jannis gucken!! TODO *)
+  | Call (ty, op, args) ->
       let d_temp =
         match ty with
         | Ptr _ -> UidM.add u SymPtr.MayAlias d
         | _ -> d
       in
-      List.fold_left (fun d op -> match op with
-        | (Ptr(_), Id(src)) -> UidM.add src SymPtr.MayAlias d
-        | _ -> d
+      List.fold_left (fun d_ op -> 
+        match op with
+        | (Ptr(_), Id(src)) -> UidM.add src SymPtr.MayAlias d_
+        | _ -> d_
       ) d_temp args
-
   | Store (ty, op1, op2) -> 
     begin match ty with
     | Ptr (Ptr(_)) -> 
@@ -69,8 +65,6 @@ type fact = SymPtr.t UidM.t
         end
     | _ -> UidM.add u SymPtr.UndefAlias d
     end
-    
-
   | Bitcast (ty1, op, ty2) ->
     let d_temp = begin match ty1 with
     | Ptr(_) -> UidM.add u SymPtr.MayAlias d
@@ -93,7 +87,6 @@ type fact = SymPtr.t UidM.t
     | _ -> UidM.add u SymPtr.MayAlias d
     end
   
-
   | _ -> UidM.add u SymPtr.UndefAlias d
 
 

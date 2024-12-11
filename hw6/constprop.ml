@@ -36,59 +36,63 @@ type fact = SymConst.t UidM.t
    - Uid of stores and void calls are UndefConst-out
    - Uid of all other instructions are NonConst-out
  *)
- let insn_flow (u, i : uid * insn) (d : fact) : fact = (* Jannis pls look at this TODO *)
-  let resolve_operand op fact_map =
+ let insn_flow (u, i : uid * insn) (d : fact) : fact = 
+  let calc_op op fact_map =
     match op with
-    | Const v -> SymConst.Const v
+    | Const c -> SymConst.Const c
     | Id id -> (
       match UidM.find_opt id fact_map with
-      | Some v -> v
+      | Some s -> s
       | None -> SymConst.UndefConst)
     | _ -> SymConst.NonConst
   in
-  let comp_res op state1 state2 =
+  let calc_binop binop val1 val2 =
+    match binop with
+    | Add -> Int64.add val1 val2
+    | Sub -> Int64.sub val1 val2
+    | Mul -> Int64.mul val1 val2
+    | Shl -> Int64.shift_left val1 (Int64.to_int val2)
+    | Lshr -> Int64.shift_right_logical val1 (Int64.to_int val2)
+    | Ashr -> Int64.shift_right val1 (Int64.to_int val2)
+    | And -> Int64.logand val1 val2
+    | Or -> Int64.logor val1 val2
+    | Xor -> Int64.logxor val1 val2
+  in
+  let calc_res op state1 state2 =
     match (state1, state2) with
-    | (SymConst.Const v1, SymConst.Const v2) -> (
-        match op with
-        | Add -> SymConst.Const (Int64.add v1 v2)
-        | Sub -> SymConst.Const (Int64.sub v1 v2)
-        | Mul -> SymConst.Const (Int64.mul v1 v2)
-        | Shl -> SymConst.Const (Int64.shift_left v1 (Int64.to_int v2))
-        | Lshr -> SymConst.Const (Int64.shift_right_logical v1 (Int64.to_int v2))
-        | Ashr -> SymConst.Const (Int64.shift_right v1 (Int64.to_int v2))
-        | And -> SymConst.Const (Int64.logand v1 v2)
-        | Or -> SymConst.Const (Int64.logor v1 v2)
-        | Xor -> SymConst.Const (Int64.logxor v1 v2))
-    | (SymConst.UndefConst, _) | (_, SymConst.UndefConst) -> SymConst.UndefConst
+    | SymConst.Const val1, SymConst.Const val2 -> SymConst.Const (calc_binop op val1 val2)
+    | SymConst.UndefConst, _ | _, SymConst.UndefConst -> SymConst.UndefConst
     | _ -> SymConst.NonConst
   in
-  let comp_cmp cmp state1 state2 =
+  let compare comparator val1 val2 =
+    let res = match comparator with
+      | Eq -> Int64.equal val1 val2
+      | Ne -> not (Int64.equal val1 val2)
+      | Slt -> Int64.compare val1 val2 < 0
+      | Sle -> Int64.compare val1 val2 <= 0
+      | Sgt -> Int64.compare val1 val2 > 0
+      | Sge -> Int64.compare val1 val2 >= 0
+    in
+    if res then 1L else 0L
+  in
+  let calc_compare cmp state1 state2 =
     match (state1, state2) with
-    | (SymConst.Const v1, SymConst.Const v2) -> (
-        match cmp with
-        | Eq -> SymConst.Const (if Int64.equal v1 v2 then 1L else 0L)
-        | Ne -> SymConst.Const (if Int64.equal v1 v2 then 0L else 1L)
-        | Slt -> SymConst.Const (if Int64.compare v1 v2 < 0 then 1L else 0L)
-        | Sle -> SymConst.Const (if Int64.compare v1 v2 <= 0 then 1L else 0L)
-        | Sgt -> SymConst.Const (if Int64.compare v1 v2 > 0 then 1L else 0L)
-        | Sge -> SymConst.Const (if Int64.compare v1 v2 >= 0 then 1L else 0L))
-    | (SymConst.UndefConst, _) | (_, SymConst.UndefConst) -> SymConst.UndefConst
+    | SymConst.Const val1, SymConst.Const val2 -> SymConst.Const (compare cmp val1 val2)
+    | SymConst.UndefConst, _ | _, SymConst.UndefConst -> SymConst.UndefConst
     | _ -> SymConst.NonConst
   in
-  let result =
-    begin match i with
-    | Binop (op, _, op1, op2) ->
-        let state1 = resolve_operand op1 d in
-        let state2 = resolve_operand op2 d in
-        comp_res op state1 state2
+  
+  let res =
+    match i with
+    | Binop (opcode, _, op1, op2) ->
+        calc_res opcode (calc_op op1 d) (calc_op op2 d)
     | Icmp (cmp, _, op1, op2) ->
-        let state1 = resolve_operand op1 d in
-        let state2 = resolve_operand op2 d in
-        comp_cmp cmp state1 state2
+        calc_compare cmp (calc_op op1 d) (calc_op op2 d)
     | Store _ | Call (Void, _, _) -> SymConst.UndefConst
-    | Alloca _ | Load _ | Bitcast _ | Gep _ | Call _ -> SymConst.NonConst end
+    | Alloca _ | Load _ | Bitcast _ | Gep _ | Call _ -> SymConst.NonConst
   in
-  UidM.add u ( result) d
+
+  UidM.add u res d
 
 
 (* The flow function across terminators is trivial: they never change const info *)

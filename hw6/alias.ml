@@ -74,6 +74,7 @@ type fact = SymPtr.t UidM.t
     | Ptr(_) ->
       begin match op with
       | Id(src) -> UidM.add src SymPtr.MayAlias d_temp
+      | _ -> d_temp
       end
     | _ -> d_temp
     end

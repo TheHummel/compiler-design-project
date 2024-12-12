@@ -785,43 +785,32 @@ let build_type_map (f: Ll.fdecl) : Ll.ty UidM.t =
 (* A helper function to build an interference graph from liveness info *)
 let interference_graph (f:Ll.fdecl) (live:Liveness.liveness) : UidSet.t UidM.t =
   let open Datastructures in
-  let add_node u ig =
-    if not (UidM.mem u ig) then UidM.add u UidSet.empty ig else ig
+  let add_edge u v ig =
+    if u = v then ig
+    else
+      let ig = UidM.add u (UidSet.add v (UidM.find u ig)) ig in
+      UidM.add v (UidSet.add u (UidM.find v ig)) ig
   in
 
-  (* Collect all UIDs that represent variables/labels that can appear in live sets *)
+  (* Initialize the interference graph with all uids *)
   let all_uids =
     fold_fdecl
       (fun s (x, _) -> UidSet.add x s)
-      (fun s l -> s)
+      (fun s _ -> s)
       (fun s (x,i) -> if insn_assigns i then UidSet.add x s else s)
       (fun s _ -> s)
       UidSet.empty f
   in
+  let ig = UidSet.fold (fun u ig -> UidM.add u UidSet.empty ig) all_uids UidM.empty in
 
-  (* Initialize the graph with all uids *)
-  let ig = UidSet.fold (fun u ig -> add_node u ig) all_uids UidM.empty in
-
-  (* For each uid that defines something, get its live_in and add edges between all pairs of variables in live_in *)
+  (* Add interference edges *)
   let ig =
     UidSet.fold (fun u ig ->
-      let live_in_set =
+      let live_out_set =
         try live.live_out u
         with Not_found -> UidSet.empty
       in
-      let vars = UidSet.elements live_in_set in
-      (* Add edges for each pair in vars *) 
-      (* TODO: add interference edges between d and all variables in live_out(i) *)
-      List.fold_left (fun ig x ->
-        List.fold_left (fun ig y ->
-          if x <> y then
-            let neigh_x = UidM.find x ig in
-            let neigh_y = UidM.find y ig in
-            UidM.add x (UidSet.add y neigh_x)
-              (UidM.add y (UidSet.add x neigh_y) ig)
-          else ig
-        ) ig vars
-      ) ig vars
+      UidSet.fold (fun v ig -> add_edge u v ig) live_out_set ig
     ) all_uids ig
   in
   ig
@@ -1029,38 +1018,38 @@ let rec better_layout (f:Ll.fdecl) (live:Liveness.liveness) : layout =
     end
   done;
 
-  (*  check if spilled is empty *)
   if not (UidSet.is_empty !spilled) then begin
     (* We have spills, so we must rewrite *)
     let f' = rewrite_fdecl f !spilled in
     let live' = Liveness.get_liveness f' in
     (* Re-run better_layout on the new IR *)
     better_layout f' live'
-  end else
+  end else begin
+    (* Rest of your code that computes the final layout *)
+    (* ---------------------------------------------
+       Compute final layout
+       --------------------------------------------- *)
+    let n_spill = ref 0 in
+    let uid_loc x =
+      match Hashtbl.find_opt color x with
+      | Some (Some r) -> r
+      | _ -> incr n_spill; Alloc.LStk (- !n_spill)
+    in
   
-
-  (* ---------------------------------------------
-     Compute final layout
-     --------------------------------------------- *)
-  let n_spill = ref 0 in
-  let uid_loc x =
-    match Hashtbl.find_opt color x with
-    | Some (Some r) -> r
-    | _ -> incr n_spill; Alloc.LStk (- !n_spill)
-  in
-
-  let lo =
-    fold_fdecl
-      (fun lo (x,_) -> (x, uid_loc x)::lo)
-      (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
-      (fun lo (x,i) ->
-         if insn_assigns i then (x, uid_loc x)::lo else (x, Alloc.LVoid)::lo)
-      (fun lo _ -> lo)
-      [] f
-  in
-  { uid_loc = (fun x -> List.assoc x lo)
-  ; spill_bytes = 8 * !n_spill
-  }
+    let lo =
+      fold_fdecl
+        (fun lo (x,_) -> (x, uid_loc x)::lo)
+        (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
+        (fun lo (x,i) ->
+           if insn_assigns i then (x, uid_loc x)::lo else (x, Alloc.LVoid)::lo)
+        (fun lo _ -> lo)
+        [] f
+    in
+    { uid_loc = (fun x -> List.assoc x lo)
+    ; spill_bytes = 8 * !n_spill
+    }
+  end
+  
 
 
 
